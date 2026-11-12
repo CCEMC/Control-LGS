@@ -45,6 +45,15 @@
         const path = e.b < 0 ? this.coast : this.inner;
         e.pts.forEach((pt, i) => (i ? path.lineTo(pt[0], pt[1]) : path.moveTo(pt[0], pt[1])));
       }
+      // şehir -> sınır kenarları (saldırı çizimi için)
+      this.edgesByCity = map.cities.map(() => []);
+      for (const e of map.edges) {
+        if (e.b < 0) continue;
+        this.edgesByCity[e.a].push({ e, other: e.b });
+        this.edgesByCity[e.b].push({ e, other: e.a });
+      }
+      this.atkCache = new Map();
+      this.pv = new Map();
       // her şehir için hafif ton farkı (elle boyanmış hissi)
       this.shade = map.cities.map((c) => ((Math.sin(c.id * 12.9898) * 43758.5453) % 1 + 1) % 1);
       this.seaPattern = this.ctx.createPattern(this.makeSeaTile(), 'repeat');
@@ -130,10 +139,15 @@
       this.version = g.version;
       this.renderLandLayer();
       this.border = new Path2D();
+      this.warBorder = new Path2D(); // savaşan ülkelerin ortak sınırı kırmızı çizilir
+      this.atkCache = new Map();
       for (const e of g.map.edges) {
         if (e.b < 0) continue;
-        if (g.cities[e.a].owner === g.cities[e.b].owner) continue;
-        e.pts.forEach((pt, i) => (i ? this.border.lineTo(pt[0], pt[1]) : this.border.moveTo(pt[0], pt[1])));
+        const oa = g.cities[e.a].owner, ob = g.cities[e.b].owner;
+        if (oa === ob) continue;
+        const war = !g.isRebel(oa) && !g.isRebel(ob) && g.atWar(oa, ob);
+        const target = war ? this.warBorder : this.border;
+        e.pts.forEach((pt, i) => (i ? target.lineTo(pt[0], pt[1]) : target.moveTo(pt[0], pt[1])));
       }
       // ülke etiket konumları
       this.labels = [];
@@ -240,9 +254,15 @@
 
       // seçim/hedef vurguları (dünya koordinatı)
       this.drawHighlights(ctx, visible, z, now);
+      const atk = this.activeAttacks(vx0, vy0, vx1, vy1);
+      this.drawAttackFill(ctx, z, now, atk);
 
       ctx.strokeStyle = 'rgba(58,40,20,0.42)'; ctx.lineWidth = 1.2 / z; ctx.stroke(this.inner);
       ctx.strokeStyle = 'rgba(40,24,10,0.92)'; ctx.lineWidth = (2.2 + 1.6 * z) / z; ctx.stroke(this.border);
+      // savaşan ülkelerin sınırı: koyu zemin üstünde kırmızı
+      ctx.strokeStyle = 'rgba(40,12,8,0.9)'; ctx.lineWidth = (4.4 + 1.6 * z) / z; ctx.stroke(this.warBorder);
+      ctx.strokeStyle = 'rgba(206,34,22,0.95)'; ctx.lineWidth = (2.6 + 1.2 * z) / z; ctx.stroke(this.warBorder);
+      this.drawAttackEdges(ctx, z, now, atk);
       ctx.strokeStyle = INK; ctx.lineWidth = (2 + 1.2 * z) / z; ctx.stroke(this.coast);
 
       // ekran koordinatları
@@ -260,6 +280,100 @@
       ctx.fillStyle = vg; ctx.fillRect(0, 0, this.vw, this.vh);
 
       if (this.frame % 3 === 0) this.drawMinimap();
+    }
+
+    // ---- saldırı çizimi (OpenFront tarzı): sınır kızarır, toprak sınırdan içeri doğru yavaş yavaş ele geçirilir ----
+    // saldırganın hedef şehirle ortak sınır kenarları (ve hedefin en uzak köşesine mesafe)
+    attackGeo(to, owner, fromOnly) {
+      const key = to + ':' + owner + ':' + (fromOnly === undefined ? '' : fromOnly);
+      let c = this.atkCache.get(key);
+      if (c) return c;
+      const g = this.game;
+      const edges = [];
+      for (const { e, other } of this.edgesByCity[to]) {
+        if (fromOnly !== undefined ? other === fromOnly : g.friendly(owner, g.cities[other].owner)) edges.push(e);
+      }
+      const pts = [], path = new Path2D();
+      for (const e of edges) {
+        e.pts.forEach((pt, i) => (i ? path.lineTo(pt[0], pt[1]) : path.moveTo(pt[0], pt[1])));
+        for (let i = 0; i < e.pts.length; i += 2) pts.push(e.pts[i]);
+      }
+      const city = g.cities[to];
+      let maxR = 0;
+      for (const v of g.map.cities[to].outline) {
+        let md = Infinity;
+        if (pts.length) { for (const p of pts) { const d = Math.hypot(v[0] - p[0], v[1] - p[1]); if (d < md) md = d; } } else md = Math.hypot(v[0] - city.x, v[1] - city.y);
+        if (md > maxR) maxR = md;
+      }
+      c = { edges, path, maxR: maxR + 8 };
+      this.atkCache.set(key, c);
+      return c;
+    }
+
+    activeAttacks(vx0, vy0, vx1, vy1) {
+      const g = this.game, list = [], seen = new Set();
+      for (const u of g.units) {
+        if (u.dead || !u.move) continue;
+        const m = u.move;
+        if (m.kind !== 'attack' && m.kind !== 'battle') continue;
+        seen.add(u.id);
+        const b = this.bbox[m.to];
+        if (b[2] < vx0 || b[0] > vx1 || b[3] < vy0 || b[1] > vy1) continue;
+        const battle = m.kind === 'battle';
+        const prev = this.pv.get(u.id) || 0, target = battle ? (m.prog || 0) : 0;
+        const vis = prev + (target - prev) * 0.1;
+        this.pv.set(u.id, vis);
+        list.push({ u, m, battle, vis, geo: battle ? this.attackGeo(m.to, u.owner) : this.attackGeo(m.to, u.owner, m.from) });
+      }
+      if (this.pv.size > seen.size) for (const k of this.pv.keys()) if (!seen.has(k)) this.pv.delete(k);
+      return list;
+    }
+
+    // ele geçirilen kısım: sınırdan içeri genişleyen, saldıranın renginde bant (kırmızı ön cephe çizgisiyle)
+    drawAttackFill(ctx, z, now, list) {
+      if (!list.length) return;
+      const g = this.game;
+      ctx.save();
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      for (const a of list) {
+        const { u, m, geo } = a;
+        ctx.save();
+        ctx.clip(this.cityPaths[m.to]);
+        if (!a.battle) {
+          // yürüyüş: sınır boyunca hafif kırmızı gölge
+          const pulse = 0.5 + 0.5 * Math.sin(now / 240);
+          if (geo.edges.length) { ctx.strokeStyle = `rgba(214,40,26,${0.08 + 0.1 * pulse})`; ctx.lineWidth = (36 + 12 * pulse) / z; ctx.stroke(geo.path); }
+          ctx.restore();
+          continue;
+        }
+        const R = a.vis * geo.maxR;
+        const p = G.PALETTE[g.cityColorIdx({ owner: u.owner })];
+        const fill = `hsla(${p.h},${p.s}%,${p.l}%,0.94)`;
+        if (geo.edges.length) {
+          ctx.strokeStyle = 'rgba(190,28,18,0.95)'; ctx.lineWidth = 2 * R + 7 / z; ctx.stroke(geo.path);
+          ctx.strokeStyle = fill; ctx.lineWidth = 2 * R; ctx.stroke(geo.path);
+        } else {
+          const c = g.cities[m.to];
+          ctx.fillStyle = 'rgba(190,28,18,0.95)'; ctx.beginPath(); ctx.arc(c.x, c.y, R + 4 / z, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = fill; ctx.beginPath(); ctx.arc(c.x, c.y, R, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.restore();
+      }
+      ctx.restore();
+    }
+
+    // saldırı yolundaki sınır: yanıp sönen kırmızı
+    drawAttackEdges(ctx, z, now, list) {
+      if (!list.length) return;
+      const pulse = 0.5 + 0.5 * Math.sin(now / 200);
+      ctx.save();
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      for (const a of list) {
+        if (!a.geo.edges.length) continue;
+        ctx.strokeStyle = 'rgba(40,10,6,0.85)'; ctx.lineWidth = (6.4 + 1.6 * z) / z; ctx.stroke(a.geo.path);
+        ctx.strokeStyle = `rgba(${Math.round(210 + 40 * pulse)},${Math.round(30 + 40 * pulse)},20,1)`; ctx.lineWidth = (4 + 1.4 * z + 2 * pulse) / z; ctx.stroke(a.geo.path);
+      }
+      ctx.restore();
     }
 
     drawDecor(ctx) {
@@ -557,6 +671,11 @@
           ctx.beginPath(); ctx.arc(dx, dy, (22 + 6 * pulse) * s, 0, Math.PI * 2);
           ctx.strokeStyle = `rgba(190,30,20,${0.5 + 0.4 * pulse})`; ctx.lineWidth = 3; ctx.stroke();
           this.swords(ctx, (sx + dx) / 2, (sy + dy) / 2, s);
+          // ele geçirme yüzdesi
+          const pct = '%' + Math.round(100 * (m.prog || 0));
+          ctx.font = `bold ${13 * s}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+          ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(248,240,216,0.95)'; ctx.strokeText(pct, dx, dy + 36 * s);
+          ctx.fillStyle = '#a3170d'; ctx.fillText(pct, dx, dy + 36 * s);
         }
         if (m.kind === 'para') {
           ctx.font = `${20 * s}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';

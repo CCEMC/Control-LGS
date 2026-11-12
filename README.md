@@ -52,6 +52,8 @@ bir sonraki açılışta yeni sürümü alır.
 
 - **Başkent düşerse devlet yıkılır.** Kalan şehirler isyancılara geçer, hazinenin yarısı fatihe ganimet olur.
 - Saldırı yavaştır: düşman şehrine yürüyüş 12 sn, ardından çatışma askerlerin sayısına göre 9–45 sn sürer; iki taraf da çatışma boyunca eriyerek kayıp verir.
+- Haritada saldırı **OpenFront gibi** izlenir: savaştaki ülkelerin ortak sınırı kırmızıya döner, saldırı yolundaki sınır kırmızı yanıp söner,
+  çatışma sürerken saldıranın rengi sınırdan şehrin içine doğru yavaş yavaş yayılır (şehir üstünde %ilerleme yazar).
 - Saldıran birlik, çatışma bitene kadar komuta edilemez. **Saldırı altındaki şehirdeki askerler şehri terk edemez**, savunmak zorundadır (takviye gönderilebilir).
 - Her şehrin askeri, haritada toprağın üzerine yazılır (altın alt çizgi = senin birliğin).
 

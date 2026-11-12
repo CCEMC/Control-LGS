@@ -170,8 +170,8 @@
         if (t.onCancel) t.onCancel();
         return true;
       }
-      if (this.marking) { this.marking = false; this.marked.clear(); this.barKey = ''; return true; }
-      if (this.selUnit !== null) { this.selectUnit(null); return true; }
+      if (this.marking) { this.marking = false; this.marked.clear(); this.barKey = ''; this.updateActionBar(); return true; }
+      if (this.selUnit !== null) { this.selectUnit(null); this.updateActionBar(); return true; }
       if (this.menu) { this.openMenu(null); return true; }
       return false;
     }
@@ -208,7 +208,7 @@
       const sel = this.selectedUnit();
       if (sel) {
         if (unit && unit.owner === me && unit.id !== sel.id && !unit.move) { this.selectUnit(unit); return; }
-        if (cityId === null) return;
+        if (cityId === null) { this.selectUnit(null); this.updateActionBar(); return; } // boş yere (denize) dokununca seçim kalkar
         if (cityId === sel.city) { this.selectUnit(null); return; }
         const amount = Math.min(sel.troops, this.amountK * 1000);
         const r = g.cmdMove(me, sel.id, cityId, amount >= sel.troops - 1 ? undefined : amount);
@@ -254,6 +254,8 @@
             <small>${this.mode === 'pc' ? 'Sol tık' : 'Dokun'}: hedef şehir · kendi/müttefik şehrine = taşı (5 sn) · komşu düşman şehrine = tüm birlikle saldır</small>`;
         } else bar.innerHTML = '';
       }
+      // Her seferinde: seçim iptal edilince (barKey sıfırlanıp yine '' kalınca) çubuk açık kalıyordu
+      bar.classList.toggle('hidden', !key);
       this.updateBarLive();
     }
     updateBarLive() {

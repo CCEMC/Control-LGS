@@ -812,7 +812,8 @@
         spend = effA > effD ? effD / aM : u.troops - CFG.minAttackRemain;
         dur = U.clamp(spend / CFG.battleSpeed, CFG.battleMin, CFG.battleMax);
       }
-      u.move = { kind: 'battle', from: fromId, to: cityId, path: [fromId, cityId], t0: this.time, t1: this.time + dur };
+      // prog: şehrin ne kadarının ele geçirildiği (0..1) — haritada sınırdan içeri doğru yavaş yavaş ilerler
+      u.move = { kind: 'battle', from: fromId, to: cityId, path: [fromId, cityId], t0: this.time, t1: this.time + dur, effD0: Math.max(effD, 1), prog: 0 };
       this.emit({ type: 'sound', name: 'battleStart', cid: u.owner, target: city.owner, city: cityId });
     }
 
@@ -997,9 +998,11 @@
       const effA = u.troops * aM;
       // savunan kalmadıysa kuşatma süresi dolunca şehir düşer
       if (!defenders.length || effD < 1) {
+        m.prog = U.clamp((this.time - m.t0) / Math.max(0.1, m.t1 - m.t0), 0, 1);
         if (this.time >= m.t1) this.winAttack(u, city, defenders, effA, 0, aM);
         return;
       }
+      m.effD0 = Math.max(m.effD0 || 1, effD); // takviye gelirse ilerleme geriye düşer
       const winning = effA > effD;
       if (!winning && u.troops <= CFG.minAttackRemain + 1) {
         u.troops = Math.max(u.troops, CFG.minAttackRemain);
@@ -1015,6 +1018,7 @@
       u.troops -= loss;
       const frac = Math.min(1, (loss * aM) / effD);
       for (const d of defenders) d.troops -= d.troops * frac;
+      m.prog = U.clamp(1 - (effD * (1 - frac)) / m.effD0, 0, 1);
       if (winning) {
         const effD2 = effD * (1 - frac);
         if (effD2 <= 150 || this.time >= m.t1 + 4) this.winAttack(u, city, defenders, u.troops * aM, effD2, aM);

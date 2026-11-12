@@ -84,27 +84,31 @@
       .sort((a, b) => b.troops - a.troops);
     let actions = 0;
     const attacked = new Set();
+    // Başkent düşerse devlet yıkılır: başkentte her zaman yeterli asker bırak (komşusu düşmansa daha fazla)
+    const info = frontInfo(game, cid);
+    const capInfo = info.find((x) => x.city.id === c.capital);
+    const capKeep = Math.max(6000, capInfo && capInfo.hostileN > 0 ? capInfo.hostileT * 1.6 + 8000 : 0);
     // 1) Saldırılar
     for (const u of idle) {
       if (actions >= 4) break;
-      if (u.troops < 4000) continue;
+      const avail = u.city === c.capital ? Math.floor((u.troops - capKeep) / 1000) * 1000 : u.troops;
+      if (avail < 4000) continue;
       const here = game.cities[u.city];
       let best = null, bestScore = -Infinity;
       for (const n of here.neighbors) {
         const t = game.cities[n];
         if (!game.hostile(cid, t.owner) || attacked.has(n)) continue;
         const effD = game.effDefense(t, game.defendersOf(n, cid));
-        const effA = u.troops * game.atkMult(cid, t.owner);
+        const effA = avail * game.atkMult(cid, t.owner);
         const margin = effA - effD * 1.18 - 1500;
         if (margin <= 0) continue;
         const isCap = game.countries.some((k) => k.capital === n && k.alive);
-        const score = margin + t.factories * 4000 + (isCap ? 8000 : 0) - effD * 0.2;
+        const score = margin + t.factories * 4000 + (isCap ? 40000 : 0) - effD * 0.2; // düşman başkenti = ülkeyi bitirir
         if (score > bestScore) { bestScore = score; best = t; }
       }
-      if (best && !game.cmdMove(cid, u.id, best.id).err) { attacked.add(best.id); actions++; }
+      if (best && !game.cmdMove(cid, u.id, best.id, avail >= u.troops ? undefined : avail).err) { attacked.add(best.id); actions++; }
     }
     // 2) Takviye
-    const info = frontInfo(game, cid);
     const atWar = info.some((x) => x.hostileN > 0);
     const needs = info.filter((x) => (atWar ? x.hostileN > 0 : x.foreignN > 0)).map((x) => ({
       x, need: (atWar ? x.hostileT * 1.25 + 4000 : x.foreignT * 0.6 + 3000) - x.mine,
@@ -115,7 +119,7 @@
     for (const u of game.units.filter((u) => !u.dead && u.owner === cid && !u.move && u.city !== null && u.army === null)) {
       if (moves >= 3 || !needs.length) break;
       if (frontSet.has(u.city) && !(u.city === c.capital)) continue;
-      const keep = u.city === c.capital ? Math.max(4000, u.troops * (atWar ? 0.15 : 0.3)) : 0;
+      const keep = u.city === c.capital ? Math.max(capKeep, u.troops * (atWar ? 0.15 : 0.3)) : 0;
       const avail = Math.floor((u.troops - keep) / 1000) * 1000;
       if (avail < 2000) continue;
       const tgt = needs[0];
