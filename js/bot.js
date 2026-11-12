@@ -101,7 +101,7 @@
         const score = margin + t.factories * 4000 + (isCap ? 8000 : 0) - effD * 0.2;
         if (score > bestScore) { bestScore = score; best = t; }
       }
-      if (best) { game.cmdMove(cid, u.id, best.id); attacked.add(best.id); actions++; }
+      if (best && !game.cmdMove(cid, u.id, best.id).err) { attacked.add(best.id); actions++; }
     }
     // 2) Takviye
     const info = frontInfo(game, cid);
@@ -123,7 +123,7 @@
       const amount = Math.min(avail, Math.max(2000, Math.ceil(tgt.need / 1000) * 1000));
       const r = game.cmdMove(cid, u.id, tgt.x.city.id, amount);
       if (!r.err) { tgt.need -= amount; moves++; if (tgt.need <= 0) needs.shift(); }
-      else needs.shift();
+      else if (!r.locked) needs.shift();
     }
   }
 

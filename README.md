@@ -45,6 +45,15 @@ bir sonraki açılışta yeni sürümü alır.
 - **Otomatik kayıt:** her 10 sn'de ve uygulama arka plana geçince kaydeder; giriş ekranında **Kaldığın Yerden Devam Et**
 - Oyun açıkken ekran kararmaz; saldırı/savaş bildirimlerinde titreşim
 - Uygulama arka plandayken oyun duraklar
+- **Ses ve müzik** (dosyasız, tamamı tarayıcıda üretilir): barışta sakin müzik, savaşta taiko davullu savaş müziği, çatışmada daha yoğun hali;
+  kılıç sesleri, savaş boruları, fanfar, füze/patlama, para ve arayüz sesleri. Üst çubuktaki 🔊 düğmesi (ya da **M**) sesi açar/kapatır.
+
+## Savaş kuralları (kısaca)
+
+- **Başkent düşerse devlet yıkılır.** Kalan şehirler isyancılara geçer, hazinenin yarısı fatihe ganimet olur.
+- Saldırı yavaştır: düşman şehrine yürüyüş 12 sn, ardından çatışma askerlerin sayısına göre 9–45 sn sürer; iki taraf da çatışma boyunca eriyerek kayıp verir.
+- Saldıran birlik, çatışma bitene kadar komuta edilemez. **Saldırı altındaki şehirdeki askerler şehri terk edemez**, savunmak zorundadır (takviye gönderilebilir).
+- Her şehrin askeri, haritada toprağın üzerine yazılır (altın alt çizgi = senin birliğin).
 
 ## Kontroller
 
@@ -54,7 +63,7 @@ bir sonraki açılışta yeni sürümü alır.
 | Tekerlek: yakınlaştır | İki parmak / + − |
 | Birliğe (veya birlikli şehre) tıkla → miktar seç → hedef şehre sol tıkla | Dokun |
 | Q / sağ tık / Esc: iptal | İptal butonu |
-| 1–4: menüler, Boşluk: başkente dön | Alt (yatayda sağ) menü çubuğu |
+| 1–4: menüler, Boşluk: başkente dön, M: sesi aç/kapat | Alt (yatayda sağ) menü çubuğu, 🔊 düğmesi |
 
 ## Dosyalar
 

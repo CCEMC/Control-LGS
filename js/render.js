@@ -387,7 +387,7 @@
         if (city.airDef) icons.push('a');
         if (icons.length) {
           const w = 11 * s, x0 = sx - (icons.length * w) / 2;
-          icons.forEach((k, i) => this.icon(ctx, k, x0 + i * w + w / 2, sy + 20 * s, s));
+          icons.forEach((k, i) => this.icon(ctx, k, x0 + i * w + w / 2, sy + 24 * s, s));
         }
         const mk = this.ui.targeting && this.ui.targeting.mark ? this.ui.targeting.mark(city.id) : null;
         if (mk) {
@@ -481,18 +481,53 @@
         const city = g.cities[cityId];
         const [sx, sy] = this.toScreen(city.x, city.y);
         list.sort((a, b) => (a.owner === g.playerId) - (b.owner === g.playerId) || a.id - b.id);
-        const gap = 4 * s;
-        ctx.font = `bold ${12 * s}px ${FONT}`;
-        const widths = list.map((u) => ctx.measureText(U.fmtK(u.troops)).width + 14 * s);
-        let total = widths.reduce((a, b) => a + b, 0) + gap * (list.length - 1);
-        let x = sx - total / 2;
+        // asker sayıları doğrudan toprağın üzerine yazılır; birden çok birlik varsa alt alta dizilir
+        const rowH = this.landFont() * 1.3;
+        const top = sy - 2 * s - ((list.length - 1) * rowH) / 2;
         list.forEach((u, i) => {
-          const cx = x + widths[i] / 2;
-          const r = this.token(ctx, cx, sy - 2 * s, u, { selected: ui.selUnit === u.id, marked: ui.marked.has(u.id) });
+          const r = this.landToken(ctx, sx, top + i * rowH, u, { selected: ui.selUnit === u.id, marked: ui.marked.has(u.id) });
           this.tokenHits.push({ unit: u, ...r });
-          x += widths[i] + gap;
         });
       }
+    }
+
+    landFont() { return U.clamp(15 * this.ui.scale * (0.72 + 0.5 * Math.min(this.cam.zoom, 1.6)), 11 * this.ui.scale, 25 * this.ui.scale); }
+
+    // Kara üzerine yazılmış asker sayısı: parşömen renkli halka + ülkenin koyu rengi
+    landToken(ctx, x, y, u, opts) {
+      const g = this.game, s = this.ui.scale;
+      const c = g.countries[u.owner];
+      const txt = U.fmtK(u.troops);
+      const fs = this.landFont();
+      ctx.font = `bold ${fs}px ${FONT}`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+      const tw = ctx.measureText(txt).width, w = tw + 12 * s, h = fs * 1.25;
+      const x0 = x - w / 2, y0 = y - h / 2;
+      ctx.lineWidth = fs * 0.4; ctx.strokeStyle = 'rgba(248,240,216,0.93)';
+      if (opts && opts.selected) { ctx.shadowColor = '#ffcf4a'; ctx.shadowBlur = 16; ctx.strokeStyle = 'rgba(255,236,160,1)'; }
+      ctx.strokeText(txt, x, y);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = c.isRebel ? '#1d1d1d' : c.dark;
+      ctx.fillText(txt, x, y + 0.5);
+      if (c.isPlayer) {
+        ctx.strokeStyle = '#d6a22a'; ctx.lineWidth = Math.max(2, fs * 0.13); ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(x - tw / 2, y + fs * 0.58); ctx.lineTo(x + tw / 2, y + fs * 0.58); ctx.stroke();
+      }
+      if (opts && opts.marked) {
+        ctx.setLineDash([3, 3]); ctx.strokeStyle = '#8a5a12'; ctx.lineWidth = 2;
+        ctx.strokeRect(x0 - 2, y0 - 2, w + 4, h + 4); ctx.setLineDash([]);
+      }
+      if (u.army !== null) {
+        const army = g.armies.find((a) => a.id === u.army);
+        if (army) {
+          ctx.beginPath(); ctx.arc(x0 + w, y0 + 1, 6.5 * s, 0, Math.PI * 2);
+          ctx.fillStyle = army.mode === 'attack' ? '#a3271c' : '#2c5a8c'; ctx.fill();
+          ctx.lineWidth = 1; ctx.strokeStyle = '#fbf1d6'; ctx.stroke();
+          ctx.fillStyle = '#fff'; ctx.font = `bold ${8.5 * s}px ${FONT}`;
+          ctx.fillText(army.mode === 'attack' ? 'T' : 'S', x0 + w, y0 + 1.5);
+        }
+      }
+      return { x: x0, y: y0, w, h };
     }
 
     drawMoving(ctx, now) {

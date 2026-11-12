@@ -122,6 +122,14 @@
     $('start').classList.add('hidden');
     if (mode === 'mobile') goFullscreen();
     keepAwake();
+    // ses ve müzik (başlat düğmesine basıldığı için tarayıcı sesi açmaya izin verir)
+    G.Audio.unlock();
+    G.Audio.startMusic();
+    game.on((ev) => G.Audio.onGameEvent(ev, game));
+    const sndBtn = $('sndBtn');
+    const syncSnd = () => { sndBtn.textContent = G.Audio.muted ? '🔇' : '🔊'; sndBtn.classList.toggle('off', G.Audio.muted); };
+    sndBtn.addEventListener('click', () => { G.Audio.toggle(); syncSnd(); });
+    syncSnd();
     ui = new G.UI(game, { mode, resumed: !!save });
     renderer = new G.Renderer($('map'), $('mini'), game, ui);
     ui.renderer = renderer;
@@ -141,7 +149,34 @@
     };
     bindInput();
     if (mode === 'mobile') $('dpad').classList.remove('hidden');
-    let last = performance.now(), acc = 0, topT = 0;
+    let last = performance.now(), acc = 0, topT = 0, soundT = 0, moodT = 0;
+    // Müzik havası ve çatışma sesleri oyun durumuna göre
+    function updateSound(dt) {
+      soundT += dt; moodT += dt;
+      if (soundT < 0.2) return;
+      soundT = 0;
+      const me = game.playerId;
+      let mine = 0, other = 0, marching = 0;
+      for (const u of game.units) {
+        if (u.dead || !u.move) continue;
+        const k = u.move.kind;
+        if (k !== 'battle' && k !== 'attack') continue;
+        const involves = u.owner === me || game.cities[u.move.to].owner === me;
+        if (k === 'battle') {
+          if (involves) mine++;
+          else {
+            const c = game.cities[u.move.to], [sx, sy] = renderer.toScreen(c.x, c.y);
+            if (sx > 0 && sx < renderer.vw && sy > 0 && sy < renderer.vh) other++;
+          }
+        } else if (involves) marching++;
+      }
+      G.Audio.battleLevel(mine ? 1 : other ? 0.35 : 0);
+      if (moodT >= 0.6) {
+        moodT = 0;
+        const atWar = !game.over && (mine > 0 || marching > 0 || game.enemiesOf(me).some((e) => !game.isRebel(e)));
+        G.Audio.setMood({ war: atWar, battle: mine ? 1 : marching ? 0.6 : 0 });
+      }
+    }
     function loop(now) {
       const dt = Math.min(0.1, (now - last) / 1000);
       last = now;
@@ -154,6 +189,7 @@
       renderer.clampCam();
       acc += dt;
       while (acc >= 0.05) { game.update(0.05); acc -= 0.05; }
+      updateSound(dt);
       renderer.draw();
       topT += dt;
       if (topT > 0.1) { topT = 0; ui.updateTop(); ui.updateActionBar(); ui.updateLive(); if (lastMouse) ui.tooltip(ui.hoverCity, lastMouse[0], lastMouse[1]); }
@@ -171,6 +207,7 @@
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
       if (keyMap[e.code]) { keys[keyMap[e.code]] = true; e.preventDefault(); }
       if (e.code === 'KeyQ') ui.cancel();
+      if (e.code === 'KeyM') $('sndBtn').click();
       if (e.code === 'Escape') { if (ui.dialogOpen()) ui.closeDialog(); else ui.cancel(); }
       if (e.code === 'Digit1') ui.openMenu('diplomacy');
       if (e.code === 'Digit2') ui.openMenu('military');
@@ -264,6 +301,12 @@
     $('zoomIn').addEventListener('click', () => renderer.zoomAt(innerWidth / 2, innerHeight / 2, 1.25));
     $('zoomOut').addEventListener('click', () => renderer.zoomAt(innerWidth / 2, innerHeight / 2, 0.8));
   }
+
+  // ses: ilk dokunuşta aç; düğmelere basınca tıklama sesi çal
+  ['pointerdown', 'keydown'].forEach((t) => document.addEventListener(t, () => G.Audio.unlock(), { capture: true, once: true }));
+  document.addEventListener('pointerdown', (e) => {
+    if (e.target.closest && e.target.closest('button, .btn, select, .ideo, [data-menu], .rchip')) G.Audio.sfx('click');
+  }, true);
 
   initApp();
   initStart();

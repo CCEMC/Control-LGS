@@ -1,8 +1,8 @@
 // Servis çalışanı: oyunu çevrimdışı çalıştırır. Dosyaları değiştirince VERSION'ı arttır.
-const VERSION = 'hc-v4';
+const VERSION = 'hc-v5';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/style.css',
-  './js/util.js', './js/mapgen.js', './js/game.js', './js/bot.js', './js/render.js', './js/ui.js', './js/main.js',
+  './js/util.js', './js/mapgen.js', './js/game.js', './js/bot.js', './js/render.js', './js/audio.js', './js/ui.js', './js/main.js',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png', './icons/favicon-32.png',
 ];
 

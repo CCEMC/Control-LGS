@@ -99,7 +99,7 @@
     onEvent(ev) {
       const g = this.game;
       if (ev.type === 'toast') {
-        if (ev.to === null || ev.to.includes(g.playerId)) this.toast(ev.text, ev.kind);
+        if (ev.to === null || ev.to.includes(g.playerId)) this.toast(ev.text, ev.kind, true);
       } else if (ev.type === 'proposal') {
         this.inbox.push(ev.p.id);
         this.renderInbox();
@@ -113,11 +113,13 @@
       }
     }
 
-    toast(text, kind) {
+    toast(text, kind, fromGame) {
       const box = this.$('toasts');
       const el = document.createElement('div');
       el.className = 'toast ' + (kind || 'info');
       el.textContent = text;
+      // oyuncunun kendi eylemlerinin sonucu (hata / onay) kısa bir sesle bildirilir; oyun olaylarının kendi sesi var
+      if (!fromGame && G.Audio) G.Audio.sfx(kind === 'bad' ? 'error' : kind === 'good' ? 'good' : 'click');
       // mobilde önemli olaylarda titreşim
       const now = performance.now();
       const activated = !navigator.userActivation || navigator.userActivation.hasBeenActive;
@@ -155,6 +157,7 @@
       return u;
     }
     selectUnit(u) {
+      if (u && u.city !== null && this.game.isUnderAttack(u.city)) this.toast(`${this.game.cities[u.city].name} saldırı altında — askerler şehri terk edemez, savunmak zorunda.`, 'bad');
       this.selUnit = u ? u.id : null;
       this.amountK = u ? Math.ceil(u.troops / 1000) : 0;
       this.barKey = '';
@@ -798,7 +801,7 @@
       const el = this.$('endScreen');
       el.classList.remove('hidden');
       el.innerHTML = `<div class="end frame"><h1>${win ? 'ZAFER' : 'YENİLGİ'}</h1>
-        <p>${win ? `${esc(g.player.name)}, kıtanın tartışmasız hâkimi oldu!` : `${esc(g.player.name)} tarih sahnesinden silindi.`}</p>
+        <p>${win ? `${esc(g.player.name)}, kıtanın tartışmasız hâkimi oldu!` : `${esc(g.player.name)} tarih sahnesinden silindi. Başkentini kaybeden devlet çöker.`}</p>
         <p>Süre: ${fmtTime(g.time)}</p>
         <button class="btn big" onclick="location.reload()">Yeniden Başla</button></div>`;
     }
