@@ -50,6 +50,14 @@
       const k = atWar ? (rnd() < 0.6 ? 'atk' : 'def') : rnd() < 0.5 ? 'def' : 'atk';
       game.cmdUpgrade(cid, k);
     }
+    // ideolojiye özel geliştirmeler
+    if (c.money >= 8 && rnd() < 0.12) {
+      const ups = game.ideoUps(cid).filter((x) => game.iu(cid, x.key) < G.CFG.ideoUpMax);
+      if (ups.length) {
+        const pick = ups[Math.floor(rnd() * ups.length)];
+        if (c.money >= game.ideoUpPrice(cid, pick.key) + 3) game.cmdIdeoUpgrade(cid, pick.key);
+      }
+    }
     if (atWar && c.money >= 45 && rnd() < 0.1) {
       let best = null, bt = 0;
       for (const city of game.cities) {
@@ -215,7 +223,7 @@
 
   function decide(game, p) {
     const me = p.to, from = p.from;
-    const rel = game.rel[me][from];
+    const rel = game.rel[me][from] + game.diploBonus(from); // Demokrasi: Diplomasi Ağı
     const r = game.rnd();
     const myP = game.power(me), fP = game.power(from);
     const yes = { accept: true }, no = (reason) => ({ accept: false, reason });

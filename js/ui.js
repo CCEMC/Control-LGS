@@ -301,7 +301,7 @@
       this.$('tbMoney').textContent = fmtMoney(p.money);
       this.$('tbInc').style.width = (p.incomeTimer / G.CFG.incomeInterval) * 100 + '%';
       const f = g.factoriesOf(p.id);
-      this.$('tbIncTxt').textContent = `+${f}₺ / ${G.CFG.incomeInterval} sn`;
+      this.$('tbIncTxt').textContent = `+${g.incomeOf(p.id)}₺ / ${G.CFG.incomeInterval} sn`;
       this.$('tbTroops').textContent = fmtK(g.totalTroops(p.id)) + (p.queue ? ` (+${p.queue}k)` : '');
       this.$('tbFac').textContent = f;
       this.$('tbCities').textContent = g.citiesOf(p.id).length;
@@ -477,6 +477,16 @@
         return `<li><div class="up-h"><b>${label}</b><span>${lvl}/10 · +%${lvl * 5}</span></div><div class="pips">${pips}</div>
           <button class="btn sm" data-act="up" data-kind="${kind}" ${lvl >= 10 || P.money < up ? 'disabled' : ''}>${lvl >= 10 ? 'Maksimum' : `+%5 · ${fmtMoney(up)}`}</button></li>`;
       };
+      // ideolojiye özel geliştirmeler (her biri 3 seviye; açıklama seviye başına etkiyi söyler)
+      const iuMax = G.CFG.ideoUpMax;
+      const iuRow = (x) => {
+        const lvl = g.iu(me, x.key), pr = g.ideoUpPrice(me, x.key);
+        const pips = Array.from({ length: iuMax }, (_, i) => `<i class="${i < lvl ? 'on' : ''}"></i>`).join('');
+        return `<li><div class="up-h"><b>${esc(x.name)}</b><span>${esc(x.desc)} · ${lvl}/${iuMax}</span></div><div class="pips">${pips}</div>
+          <button class="btn sm" data-act="iup" data-key="${x.key}" data-name="${esc(x.name)}" ${lvl >= iuMax || P.money < pr ? 'disabled' : ''}>${lvl >= iuMax ? 'Tamam' : fmtMoney(pr)}</button></li>`;
+      };
+      const ideoSect = g.ideoUps(me).length ? `<div class="sect"><h5>${esc(g.ideo(me).name)} geliştirmeleri <small>(seviye başına)</small></h5>
+          <ul class="equip ideo-up">${g.ideoUps(me).map(iuRow).join('')}</ul></div>` : '';
       const armyList = armies.map((a) => `<li><div class="ar-h"><b>${esc(a.name)}</b> ${this.L(() => fmtK(g.units.filter((u) => u.army === a.id && !u.dead).reduce((s, u) => s + u.troops, 0)))}</div>
           <div class="seg"><button class="btn sm ${a.mode === 'attack' ? 'red on' : ''}" data-act="amode" data-id="${a.id}" data-mode="attack">Taarruz</button>
           <button class="btn sm ${a.mode === 'defend' ? 'blue on' : ''}" data-act="amode" data-id="${a.id}" data-mode="defend">Savunma</button>
@@ -492,9 +502,10 @@
               <b class="target">${this.L(() => fmtK(g.totalTroops(me) + P.queue * 1000))}</b>
               <button class="btn round" data-act="q" data-dir="1" ${P.money < tp ? 'disabled' : ''}>+</button></div></div>
         </div>
-        <div class="prod"><div class="bar">${this.LW(() => (P.queue > 0 ? (P.prodTimer / G.CFG.troopBuildTime) * 100 : 0))}</div>
+        <div class="prod"><div class="bar">${this.LW(() => (P.queue > 0 ? (P.prodTimer / g.troopTime(me)) * 100 : 0))}</div>
           <small>${this.L(() => (P.queue > 0 ? `Üretimde: ${P.queue}k` : 'Üretim yok'))} · her +1k asker = ${fmtMoney(tp)}, başkentte doğar</small></div>
         <div class="sect"><h5>Ekipman</h5><ul class="equip">${upRow('atk', 'Saldırı')}${upRow('def', 'Savunma')}</ul></div>
+        ${ideoSect}
         <div class="sect"><div class="ar-top"><h5>Ordular</h5><button class="btn sm" data-act="mark">+ Ordu Kur</button></div>
           <ul class="armies">${armyList || '<li class="empty">Ordun yok. Birlikleri işaretleyip ordu kurabilirsin.</li>'}</ul></div>
         <p class="note">Birliğe ${tap} → miktarı seç → hedef şehre ${tap}.${this.mode === 'pc' ? ' Q: iptal.' : ''}</p>
@@ -565,6 +576,11 @@
         case 'leave': res(g.cmdLeaveAlliance(me), 'İttifaktan ayrıldın.'); break;
         case 'q': res(g.cmdQueueTroops(me, +b.dataset.dir)); break;
         case 'up': res(g.cmdUpgrade(me, b.dataset.kind), `${b.dataset.kind === 'atk' ? 'Saldırı' : 'Savunma'} geliştirildi.`); break;
+        case 'iup': {
+          const r = g.cmdIdeoUpgrade(me, b.dataset.key);
+          res(r, r.ok ? `${b.dataset.name} → seviye ${r.level}` : null);
+          break;
+        }
         case 'mark':
           this.selectUnit(null); this.targeting = null; this.marking = true; this.marked.clear(); this.barKey = '';
           if (this.mode === 'mobile') this.openMenu(null);

@@ -142,6 +142,12 @@ h4 { font-family: var(--font-sc); font-weight: normal; font-size: 17px; margin: 
 /* ---------- menüler v2 ---------- */
 h5 { font-family: var(--font-sc); font-weight: normal; font-size: 14px; letter-spacing: .5px; color: var(--ink3); margin: 12px 0 5px; }
 .sect h5 { border-bottom: 1px solid rgba(91,65,38,.22); padding-bottom: 2px; }
+h5 small { font-family: var(--font); font-style: italic; letter-spacing: 0; font-size: 12px; }
+.equip.ideo-up li { background: rgba(184,137,46,.07); }
+/* giriş ekranı: ideolojinin özel geliştirmeleri */
+.ideo-sp { margin-top: 7px; padding-top: 5px; border-top: 1px dotted rgba(91,65,38,.4); font-size: 12.5px; line-height: 1.5; }
+.ideo-sp span { display: block; font-family: var(--font-sc); color: var(--ink3); font-size: 12px; }
+.ideo-sp i { display: inline-block; font-style: normal; margin: 1px 2px; padding: 0 7px; border-radius: 9px; background: rgba(184,137,46,.2); border: 1px solid rgba(91,65,38,.3); }
 .muted { color: var(--ink3); font-style: italic; font-size: 13.5px; align-self: center; }
 .actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .stats4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 8px 0 2px; }

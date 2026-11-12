@@ -14,6 +14,7 @@
     occupyBase: 4000, occupyRate: 0.03, occupyMin: 5, occupyMax: 45,
     // Fabrikaya kendi toprağıyla bağlı olmayan şehirdeki askerler: saldırı, savunma ve hız ×0.5
     weakMult: 0.5,
+    ideoUpMax: 3,
   };
 
   const IDEO = {
@@ -26,7 +27,27 @@
   };
 
   const PRICES = { warRight: 5, alliance: 5, leave: 5, upgrade: 5, troop: 1, blitz: 5, cityDef: 5, factory: 12, factoryLimit: 5,
-    plane: 10, rebellion: 40, missile: 35, airDef: 20 };
+    plane: 10, rebellion: 40, missile: 35, airDef: 20, ideoUp: 6 };
+
+  // İdeolojiye özel geliştirmeler: her ideolojinin kendine ait 3 geliştirmesi var, her biri en fazla 3 seviye.
+  // Fiyat seviye başına artar (6 → 9 → 12, ideolojinin fiyat çarpanıyla). Etkiler seviye başınadır.
+  const IDEO_UP = {
+    komunizm: [
+      { key: 'plan', name: 'Beş Yıllık Plan', desc: 'Asker üretimi +%25 hızlı' },
+      { key: 'militia', name: 'Halk Milisi', desc: 'Ele geçirilen her şehirde +1k asker katılır' },
+      { key: 'agit', name: 'Devrim Ajitasyonu', desc: 'İsyan Çıkar %20 ucuz, isyancılara +%10 saldırı' },
+    ],
+    demokrasi: [
+      { key: 'market', name: 'Serbest Piyasa', desc: 'Fabrika geliri +%20' },
+      { key: 'guard', name: 'Ulusal Muhafız', desc: 'Kendi asıl topraklarında +%10 savunma' },
+      { key: 'diplo', name: 'Diplomasi Ağı', desc: 'Botlar tekliflerine daha sıcak bakar (ilişki +15)' },
+    ],
+    monarsi: [
+      { key: 'cavalry', name: 'Şövalye Süvarisi', desc: 'İşgal ve yürüyüş +%15 hızlı' },
+      { key: 'royal', name: 'Kraliyet Muhafızları', desc: 'Başkent savunması +%25' },
+      { key: 'tribute', name: 'Haraç', desc: 'Ele geçirilen her şehirden +1₺ ganimet' },
+    ],
+  };
 
   const PALETTE = [
     { h: 8, s: 55, l: 56 }, { h: 32, s: 66, l: 57 }, { h: 50, s: 62, l: 58 }, { h: 95, s: 34, l: 50 }, { h: 170, s: 34, l: 46 },
@@ -78,7 +99,7 @@
           pal, color: U.hsl(pal.h, pal.s, pal.l), dark: U.hsl(pal.h, Math.min(80, pal.s + 10), Math.max(14, pal.l - 30)),
           light: U.hsl(pal.h, pal.s, Math.min(90, pal.l + 18)),
           ideology: isRebel ? null : k === playerId ? opts.ideology : ideoKeys[Math.floor(this.rnd() * 3)],
-          alive: !isRebel, money: isRebel ? 0 : CFG.startMoney, incomeTimer: 0, limitBuys: 0, atkLvl: 0, defLvl: 0, blitzUntil: 0,
+          alive: !isRebel, money: isRebel ? 0 : CFG.startMoney, incomeTimer: 0, limitBuys: 0, atkLvl: 0, defLvl: 0, blitzUntil: 0, ideoUp: {},
           capital: isRebel ? -1 : this.map.capitals[k], queue: 0, prodTimer: 0, warRights: {}, allianceId: null,
           setupDone: false, bot: { eco: 1 + this.rnd() * 2, mil: 1 + this.rnd(), dip: 4 + this.rnd() * 4 },
         });
@@ -138,20 +159,30 @@
       const id = this.ideo(cid);
       let p = PRICES[key] * id.price;
       if (key === 'warRight') p *= id.war;
+      if (key === 'rebellion') p *= 1 - 0.2 * this.iu(cid, 'agit');
       return Math.round(p * 100) / 100;
     }
+
+    // ---- ideolojiye özel geliştirmeler ----
+    iu(cid, key) { const c = this.countries[cid]; return (c && c.ideoUp && c.ideoUp[key]) || 0; }
+    ideoUps(cid) { const c = this.countries[cid]; return c && c.ideology ? IDEO_UP[c.ideology] : []; }
+    ideoUpPrice(cid, key) { return Math.round(PRICES.ideoUp * (1 + 0.5 * this.iu(cid, key)) * this.ideo(cid).price * 100) / 100; }
+    troopTime(cid) { return CFG.troopBuildTime / (1 + 0.25 * this.iu(cid, 'plan')); }
+    incomeOf(cid) { return Math.round(this.factoriesOf(cid) * (1 + 0.2 * this.iu(cid, 'market')) * 100) / 100; }
+    diploBonus(cid) { return 15 * this.iu(cid, 'diplo'); }
+
     atkMult(cid, targetOwner) {
       const c = this.countries[cid];
       if (c.isRebel) return 1;
       let m = (1 + c.atkLvl * CFG.upgradeStep) * this.ideo(cid).atk;
       if (this.time < c.blitzUntil) m *= 1 + CFG.blitzBonus;
-      if (this.isRebel(targetOwner)) m *= this.ideo(cid).rebelAtk;
+      if (this.isRebel(targetOwner)) m *= this.ideo(cid).rebelAtk * (1 + 0.1 * this.iu(cid, 'agit'));
       return m;
     }
     // birliğin saldırı çarpanı (ideoloji, seviye, blitz + fabrikaya bağlı değilse %50 zayıf)
     unitAtk(u, targetOwner) { return this.atkMult(u.owner, targetOwner) * (u.weak ? CFG.weakMult : 1); }
-    // hareket süresi çarpanı: fabrikaya bağlı olmayan birlik 2 kat yavaş
-    unitSlow(u) { return u.weak ? 1 / CFG.weakMult : 1; }
+    // hareket süresi çarpanı: fabrikaya bağlı olmayan birlik 2 kat yavaş; Monarşi süvarisi hızlandırır
+    unitSlow(u) { return (u.weak ? 1 / CFG.weakMult : 1) / (1 + 0.15 * this.iu(u.owner, 'cavalry')); }
 
     // Hangi şehirler kendi fabrikalarından (kendi toprağı üzerinden) beslenebiliyor?
     // Bağlantısı kopan şehirlerdeki askerler (u.weak) %50 zayıf ve yavaştır.
@@ -212,6 +243,10 @@
       const c = this.countries[cid];
       let m = c.isRebel ? 1 : (1 + c.defLvl * CFG.upgradeStep) * this.ideo(cid).def;
       if (city && city.cityDef) m *= 2;
+      if (city && !c.isRebel) {
+        if (city.origOwner === cid) m *= 1 + 0.1 * this.iu(cid, 'guard'); // Demokrasi: Ulusal Muhafız
+        if (c.capital === city.id) m *= 1 + 0.25 * this.iu(cid, 'royal'); // Monarşi: Kraliyet Muhafızları
+      }
       return m;
     }
     power(cid) {
@@ -362,6 +397,20 @@
       if (!this.pay(cid, this.price(cid, 'upgrade'))) return { err: 'Yetersiz para' };
       c[key]++;
       return { ok: true };
+    }
+
+    // ideolojiye özel geliştirme satın al (her biri en fazla 3 seviye)
+    cmdIdeoUpgrade(cid, key) {
+      const c = this.countries[cid];
+      const def = this.ideoUps(cid).find((x) => x.key === key);
+      if (!def) return { err: 'Bu geliştirme ideolojine ait değil' };
+      const lvl = this.iu(cid, key);
+      if (lvl >= CFG.ideoUpMax) return { err: 'Maksimum seviye' };
+      if (!this.pay(cid, this.ideoUpPrice(cid, key))) return { err: 'Yetersiz para' };
+      if (!c.ideoUp) c.ideoUp = {};
+      c.ideoUp[key] = lvl + 1;
+      this.emit({ type: 'sound', name: 'buy', cid, item: 'ideoUp' });
+      return { ok: true, level: lvl + 1, name: def.name };
     }
 
     cmdMove(cid, unitId, toCity, amount) {
@@ -883,7 +932,9 @@
       }
       // İşgal hızı birliğin büyüklüğüne bağlıdır: büyük ordu şehri çabuk alır, küçük ordu uzun uğraşır.
       // (Zayıf — fabrikaya bağlı olmayan — birliğin saldırı gücü yarım olduğu için işgali de yarı hızda olur.)
-      const dur = U.clamp((effD + CFG.occupyBase) / Math.max(effA * CFG.occupyRate, 1), CFG.occupyMin, CFG.occupyMax);
+      // Monarşi'nin Şövalye Süvarisi işgali hızlandırır.
+      const cav = 1 + 0.15 * this.iu(u.owner, 'cavalry');
+      const dur = U.clamp((effD + CFG.occupyBase) / Math.max(effA * CFG.occupyRate, 1) / cav, CFG.occupyMin, CFG.occupyMax);
       // prog: şehrin ne kadarının ele geçirildiği (0..1) — haritada sınırdan içeri doğru yavaş yavaş ilerler
       u.move = { kind: 'battle', from: fromId, to: cityId, path: [fromId, cityId], t0: this.time, t1: this.time + dur, effD0: Math.max(effD, 1), prog: 0 };
       this.emit({ type: 'sound', name: 'battleStart', cid: u.owner, target: city.owner, city: cityId });
@@ -895,7 +946,14 @@
       const prev = city.owner;
       u.move = null; u.city = city.id;
       const wasCapital = prev !== CFG.REBEL && this.countries[prev].capital === city.id;
-      if (prev !== u.owner) this.capture(city, u.owner);
+      if (prev !== u.owner) {
+        this.capture(city, u.owner);
+        if (u.owner !== CFG.REBEL) {
+          u.troops += 1000 * this.iu(u.owner, 'militia'); // Komünizm: Halk Milisi
+          const tr = this.iu(u.owner, 'tribute'); // Monarşi: Haraç
+          if (tr) { const k = this.countries[u.owner]; k.money = Math.round((k.money + tr) * 100) / 100; }
+        }
+      }
       this.mergeCity(city.id);
       this.emit({ type: 'fx', kind: 'capture', city: city.id });
       this.emit({ type: 'sound', name: 'capture', cid: u.owner, prev, city: city.id, capital: wasCapital });
@@ -987,14 +1045,15 @@
         c.incomeTimer += dt;
         if (c.incomeTimer >= CFG.incomeInterval) {
           c.incomeTimer -= CFG.incomeInterval;
-          const f = this.factoriesOf(c.id);
+          const f = this.incomeOf(c.id); // Demokrasi: Serbest Piyasa geliri arttırır
           c.money = Math.round((c.money + f) * 100) / 100;
           if (c.isPlayer && f > 0) this.emit({ type: 'income', amount: f });
         }
         if (c.queue > 0 && c.capital >= 0) {
           c.prodTimer += dt;
-          while (c.prodTimer >= CFG.troopBuildTime && c.queue > 0) {
-            c.prodTimer -= CFG.troopBuildTime; c.queue--;
+          const tt = this.troopTime(c.id); // Komünizm: Beş Yıllık Plan üretimi hızlandırır
+          while (c.prodTimer >= tt && c.queue > 0) {
+            c.prodTimer -= tt; c.queue--;
             this.addTroops(c.id, c.capital, 1000);
             if (c.isPlayer) this.emit({ type: 'sound', name: 'troopReady', cid: c.id });
           }
@@ -1240,6 +1299,7 @@
   G.Game = Game;
   G.CFG = CFG;
   G.IDEO = IDEO;
+  G.IDEO_UP = IDEO_UP;
   G.PRICES = PRICES;
   G.PALETTE = PALETTE;
   G.PROPOSAL_NAMES = PROPOSAL_NAMES;

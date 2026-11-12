@@ -48,6 +48,23 @@ bir sonraki açılışta yeni sürümü alır.
 - **Ses ve müzik** (dosyasız, tamamı tarayıcıda üretilir): barışta sakin müzik, savaşta taiko davullu savaş müziği, çatışmada daha yoğun hali;
   kılıç sesleri, savaş boruları, fanfar, füze/patlama, para ve arayüz sesleri. Üst çubuktaki 🔊 düğmesi (ya da **M**) sesi açar/kapatır.
 
+## İdeolojiye özel geliştirmeler
+
+Her ideolojinin sadece kendisinin alabileceği 3 geliştirmesi var (Askeri Yönetim menüsünde). Her biri en fazla 3 seviye,
+fiyatı seviye başına artar (6 → 9 → 12₺, Komünizm'de %10 ucuz). Etkiler seviye başınadır; botlar da bunları alır.
+
+| İdeoloji | Geliştirme | Etki (seviye başına) |
+|---|---|---|
+| Komünizm | Beş Yıllık Plan | Asker üretimi +%25 hızlı |
+| Komünizm | Halk Milisi | Ele geçirilen her şehirde +1k asker katılır |
+| Komünizm | Devrim Ajitasyonu | İsyan Çıkar %20 ucuz, isyancılara +%10 saldırı |
+| Demokrasi | Serbest Piyasa | Fabrika geliri +%20 |
+| Demokrasi | Ulusal Muhafız | Kendi asıl (başlangıç) topraklarında +%10 savunma |
+| Demokrasi | Diplomasi Ağı | Botlar tekliflerine ilişkin +15 daha iyiymiş gibi bakar |
+| Monarşi | Şövalye Süvarisi | İşgal ve yürüyüş +%15 hızlı |
+| Monarşi | Kraliyet Muhafızları | Başkent savunması +%25 |
+| Monarşi | Haraç | Ele geçirilen her şehirden +1₺ ganimet |
+
 ## Savaş kuralları (kısaca)
 
 - **Başkent düşerse devlet yıkılır.** Kalan şehirler isyancılara geçer, hazinenin yarısı fatihe ganimet olur.

@@ -76,6 +76,7 @@
         <div class="ideo-seal">${d.name[0]}</div>
         <b>${d.name}</b>
         <ul>${d.perks.map((p) => `<li>${p}</li>`).join('')}</ul>
+        ${G.IDEO_UP && G.IDEO_UP[d.key] ? `<div class="ideo-sp"><span>Özel geliştirmeler</span>${G.IDEO_UP[d.key].map((x) => `<i title="${x.desc}">${x.name}</i>`).join('')}</div>` : ''}
       </button>`).join('');
     ideoBox.addEventListener('click', (e) => {
       const b = e.target.closest('.ideo'); if (!b) return;
