@@ -51,7 +51,11 @@ bir sonraki açılışta yeni sürümü alır.
 ## Savaş kuralları (kısaca)
 
 - **Başkent düşerse devlet yıkılır.** Kalan şehirler isyancılara geçer, hazinenin yarısı fatihe ganimet olur.
-- Saldırı yavaştır: düşman şehrine yürüyüş 12 sn, ardından çatışma askerlerin sayısına göre 9–45 sn sürer; iki taraf da çatışma boyunca eriyerek kayıp verir.
+- Saldırıda yürüyüş yoktur: komşu düşman şehrine saldırı emri verince çatışma **hemen sınırda** başlar ve şehir, senin şehrinle ortak sınırından
+  içeri doğru renk değiştirir. **İşgal hızı birliğin büyüklüğüne bağlıdır:** süre ≈ (savunma + 4k) ÷ (saldırı gücü × 0,03); 5k'lık savunmayı 30k asker ~10 sn'de,
+  12k asker ~25 sn'de alır (5–45 sn). İki taraf da çatışma boyunca eriyerek kayıp verir. Savunmayı hiç geçemeyecek küçük bir kuvvetle (≤3k) saldırı başlamaz.
+- **Fabrika** her 15 sn'de 1₺ verir ve **6 sn'de kurulur** (inşaat sürerken haritada soluk simge + ilerleme çubuğu görünür; bitene kadar gelir ve ikmal vermez,
+  şehir el değiştirirse inşaat iptal olur).
 - Haritada saldırı **OpenFront gibi** izlenir: savaştaki ülkelerin ortak sınırı kırmızıya döner, saldırı yolundaki sınır kırmızı yanıp söner,
   çatışma sürerken saldıranın rengi sınırdan şehrin içine doğru yavaş yavaş yayılır (şehir üstünde %ilerleme yazar).
 - Saldıran birlik, çatışma bitene kadar komuta edilemez. **Saldırı altındaki şehirdeki askerler şehri terk edemez**, savunmak zorundadır (takviye gönderilebilir).
@@ -59,7 +63,7 @@ bir sonraki açılışta yeni sürümü alır.
 - **Fabrika bağlantısı (ikmal):** bir şehir, kendi toprağın üzerinden hiçbir fabrikaya bağlı değilse oradaki askerler
   **%50 daha zayıf saldırır, %50 daha zayıf savunur ve %50 daha yavaş yürür**. Bu askerlerin üstünde sarı bir **❗** işareti görünür
   (üstüne gelince şehir ipucunda, Askeri Yönetim menüsünde de uyarı çıkar). Çözüm: kopuk bölgeye fabrika kur ya da toprağını fabrikalı bölgeyle birleştir.
-  Müttefikin fabrikaya bağlı şehri de seni besler; isyancılar bu kurala tabi değildir.
+  Sadece **kendi** toprağın sayılır (müttefik toprağı seni beslemez); isyancılar bu kurala tabi değildir.
 
 ## Kontroller
 

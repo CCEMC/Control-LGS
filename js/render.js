@@ -323,7 +323,9 @@
         const prev = this.pv.get(u.id) || 0, target = battle ? (m.prog || 0) : 0;
         const vis = prev + (target - prev) * 0.1;
         this.pv.set(u.id, vis);
-        list.push({ u, m, battle, vis, geo: battle ? this.attackGeo(m.to, u.owner) : this.attackGeo(m.to, u.owner, m.from) });
+        // renk, saldıran şehrin hedefle ortak sınırından içeri doğru yayılır (paraşütçü gibi komşu olmayanlarda tüm sınırlardan)
+        const adj = g.cities[m.to].neighbors.includes(m.from);
+        list.push({ u, m, battle, vis, geo: this.attackGeo(m.to, u.owner, adj ? m.from : undefined) });
       }
       if (this.pv.size > seen.size) for (const k of this.pv.keys()) if (!seen.has(k)) this.pv.delete(k);
       return list;
@@ -497,11 +499,13 @@
         // fabrikalar (fotoğraftaki noktalar gibi, küçük binalar)
         const icons = [];
         for (let i = 0; i < city.factories; i++) icons.push('f');
+        // inşaatı süren fabrikalar: soluk, ilerleme çubuklu
+        for (const t1 of city.building) icons.push('b' + U.clamp(1 - (t1 - g.time) / G.CFG.factoryBuildTime, 0, 1));
         if (city.cityDef) icons.push('d');
         if (city.airDef) icons.push('a');
         if (icons.length) {
           const w = 11 * s, x0 = sx - (icons.length * w) / 2;
-          icons.forEach((k, i) => this.icon(ctx, k, x0 + i * w + w / 2, sy + 24 * s, s));
+          icons.forEach((k, i) => (k[0] === 'b' ? this.buildIcon(ctx, x0 + i * w + w / 2, sy + 24 * s, s, +k.slice(1)) : this.icon(ctx, k, x0 + i * w + w / 2, sy + 24 * s, s)));
         }
         const mk = this.ui.targeting && this.ui.targeting.mark ? this.ui.targeting.mark(city.id) : null;
         if (mk) {
@@ -520,6 +524,19 @@
           ctx.fillStyle = INK; ctx.fillText(city.name, sx, ny);
         }
       }
+    }
+
+    // inşaattaki fabrika: yarı saydam bina + altında dolan çubuk
+    buildIcon(ctx, x, y, s, p) {
+      ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+      ctx.globalAlpha = 0.45 + 0.4 * p;
+      ctx.fillStyle = '#4a3420';
+      ctx.beginPath(); ctx.moveTo(-5, 4); ctx.lineTo(-5, -1); ctx.lineTo(-2, -3); ctx.lineTo(-2, -1); ctx.lineTo(1, -3); ctx.lineTo(1, -1);
+      ctx.lineTo(3, -1); ctx.lineTo(3, -6); ctx.lineTo(5, -6); ctx.lineTo(5, 4); ctx.closePath(); ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = 'rgba(40,24,10,0.5)'; ctx.fillRect(-5, 6, 10, 2.2);
+      ctx.fillStyle = '#e2b84a'; ctx.fillRect(-5, 6, 10 * p, 2.2);
+      ctx.restore();
     }
 
     icon(ctx, kind, x, y, s) {

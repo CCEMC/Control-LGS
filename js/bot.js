@@ -33,14 +33,14 @@
     const rnd = game.rnd;
     const enemies = game.enemiesOf(cid);
     const atWar = enemies.length > 0;
-    const facs = game.factoriesOf(cid);
+    const facs = game.factoriesOf(cid) + game.factoriesPending(cid); // inşaatı süren fabrikalar da sayılır
     const want = 3 + Math.floor(game.time / 40);
     const fp = game.price(cid, 'factory');
 
     if (facs < want && c.money >= fp + (atWar ? 6 : 0) && rnd() < (atWar ? 0.3 : 0.7)) {
       // fabrikasız (bağlantısı kopmuş) bölgede askerleri varsa oraya fabrika kur; yoksa iç şehirleri tercih et
       const unfed = (x) => (game.supply && !game.supply[x.id] && game.troopsAt(x.id, cid) > 3000 ? 0 : 1);
-      const opts = game.citiesOf(cid).filter((x) => x.factories < game.factoryLimit(cid))
+      const opts = game.citiesOf(cid).filter((x) => game.factorySlots(x) < game.factoryLimit(cid))
         .sort((a, b) => (unfed(a) - unfed(b)) || (game.isBorderCity(a.id) - game.isBorderCity(b.id)) || (b.factories - a.factories));
       if (opts.length) game.cmdBuy(cid, 'factory', { city: opts[0].id });
       else if (c.limitBuys < 3) game.cmdBuy(cid, 'factoryLimit');
@@ -73,7 +73,7 @@
       if (t) game.cmdBuy(cid, 'airDef', { city: t.id });
     }
     // barışta önce fabrikaya biriktir (ekonomi büyüsün)
-    const saving = !atWar && game.factoriesOf(cid) < want && game.citiesOf(cid).some((x) => x.factories < game.factoryLimit(cid));
+    const saving = !atWar && facs < want && game.citiesOf(cid).some((x) => game.factorySlots(x) < game.factoryLimit(cid));
     const threatened = game.neighborsOfCountry(cid).some((n) => game.countries[n] && game.countries[n].warRights && game.countries[n].warRights[cid] !== undefined);
     const reserve = atWar || threatened ? 1 : saving ? fp + 2 : 4;
     const spend = Math.floor((c.money - reserve) * (atWar ? 0.9 : 0.55) / game.price(cid, 'troop'));

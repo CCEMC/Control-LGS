@@ -5,12 +5,13 @@
   const U = G.U;
 
   const CFG = {
-    incomeInterval: 7, troopBuildTime: 2, moveTime: 5, retreatTime: 2.5, warRightDelay: 20,
+    incomeInterval: 15, factoryBuildTime: 6, troopBuildTime: 2, moveTime: 5, retreatTime: 2.5, warRightDelay: 20,
     blitzDuration: 120, blitzBonus: 0.35, baseFactoryLimit: 3, maxLimitBuys: 3, maxUpgrade: 10,
     upgradeStep: 0.05, minAttackRemain: 3000, planeMax: 15000, planeTime: 4, missileTime: 3,
     rebellionMin: 5000, missileIntercept: 0.15, startMoney: 10, proposalTimeout: 30, REBEL: 9,
-    // Saldırı artık yavaş: düşman şehrine yürüyüş uzun sürer, muharebe de saniyelerce sürer.
-    attackTime: 12, battleMin: 9, battleMax: 45, battleSpeed: 1800, siegeEmpty: 4,
+    // Saldırıda yürüyüş yok: muharebe sınırda hemen başlar. İşgal hızı birliğin büyüklüğüne bağlıdır:
+    // süre = (savunma + occupyBase) / (saldırı gücü × occupyRate)  → büyük ordu şehri çabuk alır, küçük ordu yavaş.
+    occupyBase: 4000, occupyRate: 0.03, occupyMin: 5, occupyMax: 45,
     // Fabrikaya kendi toprağıyla bağlı olmayan şehirdeki askerler: saldırı, savunma ve hız ×0.5
     weakMult: 0.5,
   };
@@ -60,7 +61,7 @@
 
       this.cities = this.map.cities.map((c) => ({
         id: c.id, name: c.name, x: c.x, y: c.y, neighbors: c.neighbors, coastal: c.coastal,
-        owner: this.map.owner[c.id], origOwner: this.map.owner[c.id], factories: 0, cityDef: false, airDef: false,
+        owner: this.map.owner[c.id], origOwner: this.map.owner[c.id], factories: 0, cityDef: false, airDef: false, building: [],
       }));
 
       const playerId = Math.floor(this.rnd() * 9);
@@ -127,6 +128,9 @@
     }
     factoryLimit(cid) { return CFG.baseFactoryLimit + this.countries[cid].limitBuys; }
     factoriesOf(cid) { let s = 0; for (const c of this.cities) if (c.owner === cid) s += c.factories; return s; }
+    // inşaatı süren fabrikalar (6 sn sürer; bitene kadar gelir ve ikmal vermez)
+    factoriesPending(cid) { let s = 0; for (const c of this.cities) if (c.owner === cid) s += c.building.length; return s; }
+    factorySlots(city) { return city.factories + city.building.length; }
     totalTroops(cid) { let s = 0; for (const u of this.units) if (!u.dead && u.owner === cid) s += u.troops; return s; }
     idleUnitsAt(cityId) { return this.units.filter((u) => !u.dead && u.city === cityId && !u.move); }
     troopsAt(cityId, owner) { let s = 0; for (const u of this.units) if (!u.dead && u.city === cityId && !u.move && (owner === undefined || u.owner === owner)) s += u.troops; return s; }
@@ -170,10 +174,10 @@
         if (u.owner === CFG.REBEL) { u.weak = false; continue; }
         const ref = u.move ? u.move.from : u.city;
         if (ref === null || ref === undefined) continue;
-        // müttefik şehri de, kendi fabrikasına bağlıysa beslenir
-        const fed = this.friendly(u.owner, this.cities[ref].owner) && sup[ref] === 1;
-        if (u.move) { if (this.friendly(u.owner, this.cities[ref].owner)) u.weak = !fed; } // yoldaki birlik çıktığı şehrin durumunu taşır
-        else u.weak = !fed;
+        // sadece KENDİ toprağın üzerinden fabrikaya bağlı şehirler beslenir (müttefik toprağı sayılmaz)
+        const own = this.cities[ref].owner === u.owner;
+        if (u.move) { if (own) u.weak = !sup[ref]; } // yoldaki birlik çıktığı şehrin durumunu taşır
+        else u.weak = !(own && sup[ref] === 1);
       }
     }
     // Oyuncuya, askerlerinin fabrikayla bağlantısı koptuğunda (yeni bir durum oluştuğunda) bir kez haber ver.
@@ -282,8 +286,9 @@
       if (!u.move) { const c = this.cities[u.city]; return [c.x, c.y]; }
       const m = u.move;
       if (m.kind === 'battle') {
+        // savaşan birlik iki şehrin sınırında durur
         const a = this.cities[m.from], b = this.cities[m.to];
-        return [a.x + (b.x - a.x) * 0.62, a.y + (b.y - a.y) * 0.62];
+        return [a.x + (b.x - a.x) * 0.5, a.y + (b.y - a.y) * 0.5];
       }
       const t = U.clamp((this.time - m.t0) / (m.t1 - m.t0), 0, 1);
       const pts = m.path.map((id) => [this.cities[id].x, this.cities[id].y]);
@@ -387,15 +392,21 @@
       if (this.hostile(cid, tc.owner)) {
         if (!this.cities[from].neighbors.includes(toCity)) return { err: 'Sadece komşu şehirlere saldırabilirsin' };
         // seçilen miktar kadar asker saldırıya çıkar, geri kalanı şehirde kalır
-        let atk = u;
-        if (amount !== undefined && Math.round(amount) < u.troops) {
-          const part = U.clamp(Math.round(amount), 1, u.troops);
-          u.troops -= part; atk = this.newUnit(cid, null, part, u.army); atk.weak = u.weak;
+        const part = amount !== undefined && Math.round(amount) < u.troops ? U.clamp(Math.round(amount), 1, u.troops) : u.troops;
+        // çok küçük bir kuvvet savunmayı hiç geçemiyorsa saldırı başlamaz
+        const defs = this.defendersOf(toCity, cid);
+        const effD = this.effDefense(tc, defs), effA = part * this.unitAtk(u, tc.owner);
+        if (defs.length && effA <= effD && part <= CFG.minAttackRemain) {
+          return { err: `${tc.name} savunması (${U.fmtK(Math.round(effD))}) bu küçük kuvveti (${U.fmtK(part)}) geçer` };
         }
+        let atk = u;
+        if (part < u.troops) { u.troops -= part; atk = this.newUnit(cid, null, part, u.army); atk.weak = u.weak; }
         atk.city = null;
-        atk.move = { kind: 'attack', from, to: toCity, path: [from, toCity], t0: this.time, t1: this.time + CFG.attackTime * this.unitSlow(atk) };
+        // Yürüyüş yok: muharebe hemen sınırda başlar, şehir sınırdan içeri doğru renk değiştirir.
+        atk.move = { kind: 'attack', from, to: toCity, path: [from, toCity], t0: this.time, t1: this.time };
         if (!this.isRebel(tc.owner)) this.say(tc.owner, `${this.countries[cid].name} ${U.fmtK(atk.troops)} askerle ${tc.name} şehrine saldırıyor!`, 'bad');
         this.emit({ type: 'sound', name: 'attackLaunch', cid, target: tc.owner });
+        this.resolveAttack(atk, toCity, from);
         return { ok: true, unit: atk };
       }
       return { err: `${this.countries[tc.owner].name} ile savaşta değilsin` };
@@ -731,9 +742,9 @@
           return { ok: true };
         case 'factory':
           if (!city || city.owner !== cid) return fail('Kendi şehrini seçmelisin');
-          if (city.factories >= this.factoryLimit(cid)) return fail(`Bu şehir fabrika sınırında (${this.factoryLimit(cid)})`);
+          if (this.factorySlots(city) >= this.factoryLimit(cid)) return fail(`Bu şehir fabrika sınırında (${this.factoryLimit(cid)})`);
           if (!this.pay(cid, pr)) return fail('Yetersiz para');
-          city.factories++;
+          city.building.push(this.time + CFG.factoryBuildTime); // inşaat 6 sn sürer
           return { ok: true };
         case 'factoryLimit':
           if (c.limitBuys >= CFG.maxLimitBuys) return fail('En fazla 3 kez alınabilir');
@@ -772,7 +783,7 @@
           if (!this.pay(cid, pr)) return fail('Yetersiz para');
           const target = cands[Math.floor(this.rnd() * cands.length)];
           for (const u of this.idleUnitsAt(target.id)) { if (u.owner === t) { u.owner = CFG.REBEL; u.army = null; } }
-          target.owner = CFG.REBEL;
+          target.owner = CFG.REBEL; target.building = [];
           for (const u of this.idleUnitsAt(target.id)) if (u.owner !== CFG.REBEL) this.sendHome(u);
           this.mergeCity(target.id);
           this.version++;
@@ -851,6 +862,8 @@
       let dest = from;
       if (dest === undefined || dest === null || !this.friendly(u.owner, this.cities[dest].owner)) dest = this.countries[u.owner].capital;
       if (dest < 0 || !this.friendly(u.owner, this.cities[dest].owner)) { u.dead = true; return; }
+      // Muharebe sınırda geçtiği için askerler yürümeden kendi şehrine döner.
+      if (m && (m.kind === 'battle' || (m.kind === 'attack' && m.t1 <= m.t0)) && dest === from) { this.placeUnit(u, dest); return; }
       const start = m ? m.to : from;
       u.city = null;
       u.move = { kind: 'retreat', from: start, to: dest, path: [start, dest], t0: this.time, t1: this.time + CFG.retreatTime * this.unitSlow(u) };
@@ -863,17 +876,14 @@
       const defenders = this.defendersOf(cityId, u.owner);
       const aM = this.unitAtk(u, city.owner);
       const effA = u.troops * aM, effD = this.effDefense(city, defenders);
-      // Muharebe her zaman zaman alır: boş şehir kısa bir kuşatma, savunulan şehir uzun bir çatışmadır.
-      let dur = CFG.siegeEmpty, spend = 0;
-      if (defenders.length) {
-        if (effA <= effD && u.troops <= CFG.minAttackRemain) {
-          this.say([u.owner, city.owner], `${this.countries[u.owner].name} ordusu ${city.name} önünde püskürtüldü.`, 'info');
-          this.retreat(u);
-          return;
-        }
-        spend = effA > effD ? effD / aM : u.troops - CFG.minAttackRemain;
-        dur = U.clamp(spend / CFG.battleSpeed, CFG.battleMin, CFG.battleMax);
+      if (defenders.length && effA <= effD && u.troops <= CFG.minAttackRemain) {
+        this.say([u.owner, city.owner], `${this.countries[u.owner].name} ordusu ${city.name} önünde püskürtüldü.`, 'info');
+        this.retreat(u);
+        return;
       }
+      // İşgal hızı birliğin büyüklüğüne bağlıdır: büyük ordu şehri çabuk alır, küçük ordu uzun uğraşır.
+      // (Zayıf — fabrikaya bağlı olmayan — birliğin saldırı gücü yarım olduğu için işgali de yarı hızda olur.)
+      const dur = U.clamp((effD + CFG.occupyBase) / Math.max(effA * CFG.occupyRate, 1), CFG.occupyMin, CFG.occupyMax);
       // prog: şehrin ne kadarının ele geçirildiği (0..1) — haritada sınırdan içeri doğru yavaş yavaş ilerler
       u.move = { kind: 'battle', from: fromId, to: cityId, path: [fromId, cityId], t0: this.time, t1: this.time + dur, effD0: Math.max(effD, 1), prog: 0 };
       this.emit({ type: 'sound', name: 'battleStart', cid: u.owner, target: city.owner, city: cityId });
@@ -896,6 +906,7 @@
     capture(city, newOwner, peaceful) {
       const prev = city.owner;
       city.owner = newOwner;
+      city.building = []; // yarım kalan inşaat iptal olur
       if (!peaceful) city.cityDef = false;
       for (const u of this.idleUnitsAt(city.id)) if (!this.friendly(u.owner, newOwner)) this.sendHome(u);
       this.version++;
@@ -932,7 +943,7 @@
         const rebelCities = [];
         for (const city of this.cities) {
           if (city.owner !== cid) continue;
-          city.owner = CFG.REBEL; city.factories = 0; city.cityDef = false; city.airDef = false;
+          city.owner = CFG.REBEL; city.factories = 0; city.building = []; city.cityDef = false; city.airDef = false;
           rebelCities.push(city.id);
         }
         // halk ayaklanır: kalan şehirlerdeki askerlerin yarısı isyancılara katılır, yarısı dağılır
@@ -995,6 +1006,19 @@
         if (c.blitzUntil > 0 && c.blitzUntil <= T && c.blitzUntil > T - dt) this.say(c.id, 'Blitzkrieg sona erdi.', 'info');
       }
 
+      // fabrika inşaatları (her biri CFG.factoryBuildTime sn sürer)
+      for (const c of this.cities) {
+        if (!c.building.length) continue;
+        const done = c.building.filter((t) => t <= T).length;
+        if (!done) continue;
+        c.building = c.building.filter((t) => t > T);
+        c.factories += done;
+        if (c.owner === this.playerId) {
+          this.say(c.owner, `🏭 ${c.name} şehrinde ${done > 1 ? done + ' fabrika' : 'fabrika'} tamamlandı.`, 'good');
+          this.emit({ type: 'sound', name: 'buy', cid: c.owner, item: 'factoryDone' });
+        }
+      }
+
       // hareketler ve muharebeler
       for (const u of this.units) {
         if (u.dead || !u.move) continue;
@@ -1019,7 +1043,7 @@
           continue;
         }
         for (const u of this.idleUnitsAt(city.id)) u.dead = true;
-        city.factories = 0; city.cityDef = false; city.airDef = false;
+        city.factories = 0; city.building = []; city.cityDef = false; city.airDef = false;
         this.emit({ type: 'fx', kind: 'explosion', city: city.id });
         this.say([p.owner, city.owner], `💥 Füze ${city.name} şehrini vurdu! Tüm askerler ve yapılar yok oldu.`, 'war');
       }
@@ -1176,7 +1200,7 @@
       return {
         v: 1, seed: this.seed, time: this.time, phase: this.phase, nextId: this.nextId, playerId: this.playerId, over: this.over,
         armyTimer: this.armyTimer, nCities: this.cities.length,
-        cities: this.cities.map((c) => [c.owner, c.origOwner, c.factories, c.cityDef ? 1 : 0, c.airDef ? 1 : 0]),
+        cities: this.cities.map((c) => [c.owner, c.origOwner, c.factories, c.cityDef ? 1 : 0, c.airDef ? 1 : 0, c.building]),
         countries: this.countries.map(strip),
         units: this.units.filter((u) => !u.dead),
         wars: [...this.wars.values()],
@@ -1192,7 +1216,7 @@
       if (g.cities.length !== d.nCities) throw new Error('Harita yeniden üretilemedi');
       g.listeners = [];
       g.time = d.time; g.phase = d.phase; g.nextId = d.nextId; g.playerId = d.playerId; g.over = d.over; g.armyTimer = d.armyTimer || 0;
-      d.cities.forEach((a, i) => { const c = g.cities[i]; c.owner = a[0]; c.origOwner = a[1]; c.factories = a[2]; c.cityDef = !!a[3]; c.airDef = !!a[4]; });
+      d.cities.forEach((a, i) => { const c = g.cities[i]; c.owner = a[0]; c.origOwner = a[1]; c.factories = a[2]; c.cityDef = !!a[3]; c.airDef = !!a[4]; c.building = Array.isArray(a[5]) ? a[5] : []; });
       g.countries.forEach((c, i) => Object.assign(c, d.countries[i]));
       g.units = d.units;
       g.wars = new Map(d.wars.map((w) => [g.warKey(w.a, w.b), w]));

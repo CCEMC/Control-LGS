@@ -8,7 +8,7 @@
   const SHOP = [
     { key: 'blitz', name: 'Blitzkrieg', desc: '2 dk boyunca +%35 saldırı.', target: null },
     { key: 'cityDef', name: 'Şehir Savunması', desc: 'Seçtiğin şehirde savunma 2 kat.', target: 'own' },
-    { key: 'factory', name: 'Fabrika', desc: '+1₺ / 7 sn. Toprakla bağlı şehirlerdeki askerleri güçlü tutar.', target: 'own' },
+    { key: 'factory', name: 'Fabrika', desc: '+1₺ / 15 sn. 6 sn\'de kurulur; bağlı şehirlerdeki askerleri güçlü tutar.', target: 'own' },
     { key: 'factoryLimit', name: 'Fabrika Limiti', desc: 'Şehir başına fabrika sınırı +1.', target: null },
     { key: 'plane', name: 'Uçak', desc: 'Başkentten bir iç şehre en fazla 15k asker çıkarır.', target: 'plane' },
     { key: 'rebellion', name: 'İsyan Çıkar', desc: 'Seçtiğin ülkede 5k+ askerli rastgele bir şehir isyan eder.', target: 'country' },
@@ -301,7 +301,7 @@
       this.$('tbMoney').textContent = fmtMoney(p.money);
       this.$('tbInc').style.width = (p.incomeTimer / G.CFG.incomeInterval) * 100 + '%';
       const f = g.factoriesOf(p.id);
-      this.$('tbIncTxt').textContent = `+${f}₺ / 7 sn`;
+      this.$('tbIncTxt').textContent = `+${f}₺ / ${G.CFG.incomeInterval} sn`;
       this.$('tbTroops').textContent = fmtK(g.totalTroops(p.id)) + (p.queue ? ` (+${p.queue}k)` : '');
       this.$('tbFac').textContent = f;
       this.$('tbCities').textContent = g.citiesOf(p.id).length;
@@ -335,6 +335,7 @@
       const inc = g.incomingAttacks(cityId).length;
       const struct = [];
       if (c.factories) struct.push(`${c.factories} fabrika`);
+      if (c.building.length) struct.push(`🏗 ${c.building.length} fabrika inşaatta`);
       if (c.cityDef) struct.push('şehir savunması');
       if (c.airDef) struct.push('hava koruma');
       tip.innerHTML = `<div class="tt-h">${isCap ? '★ ' : ''}${esc(c.name)}</div>
@@ -609,8 +610,8 @@
             (cid) => done(g.cmdBuy(me, 'cityDef', { city: cid }), `${g.cities[cid].name} şehrine savunma kuruldu.`));
           break;
         case 'factory':
-          startTarget('Fabrika kurulacak kendi şehrini seç', own((c) => (c.factories >= g.factoryLimit(me) ? 'Bu şehir fabrika sınırında' : null)),
-            (cid) => done(g.cmdBuy(me, 'factory', { city: cid }), `${g.cities[cid].name} şehrine fabrika kuruldu.`));
+          startTarget('Fabrika kurulacak kendi şehrini seç', own((c) => (g.factorySlots(c) >= g.factoryLimit(me) ? 'Bu şehir fabrika sınırında' : null)),
+            (cid) => done(g.cmdBuy(me, 'factory', { city: cid }), `${g.cities[cid].name} şehrinde fabrika inşa ediliyor (${G.CFG.factoryBuildTime} sn).`));
           break;
         case 'airDef':
           startTarget('Hava koruma kurulacak kendi şehrini seç', own((c) => (c.airDef ? 'Bu şehirde zaten hava koruma var' : null)),
