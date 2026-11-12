@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Hükümdarlar Çağı</title>
+  <meta name="description" content="Eski harita temalı strateji oyunu: dokuz devlet, tek kıta.">
+  <meta name="theme-color" content="#3a2814">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Hükümdarlar">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <canvas id="map"></canvas>
+
+  <div id="hud" class="hidden">
+    <div id="miniWrap" class="frame"><canvas id="mini"></canvas></div>
+
+    <div id="topbar" class="frame">
+      <div class="tb-country"><span id="tbSwatch" class="sw big"></span><b id="tbName"></b><small id="tbIdeo"></small></div>
+      <div class="tb-stat" id="tbMoneyBox" title="Hazine — her 7 saniyede fabrika başına 1₺">
+        <span class="lbl">Hazine</span><b id="tbMoney"></b>
+        <div class="incbar"><i id="tbInc"></i></div><small id="tbIncTxt"></small>
+      </div>
+      <div class="tb-stat" title="Toplam asker (üretim kuyruğu)"><span class="lbl">Asker</span><b id="tbTroops"></b></div>
+      <div class="tb-stat" title="Fabrika sayısı"><span class="lbl">Fabrika</span><b id="tbFac"></b></div>
+      <div class="tb-stat tb-opt" title="Şehir sayısı"><span class="lbl">Şehir</span><b id="tbCities"></b></div>
+      <div class="tb-stat tb-opt" title="Oyun süresi"><span class="lbl">Süre</span><b id="tbTime"></b></div>
+      <div class="tb-flag blitz hidden" id="tbBlitz"></div>
+      <div class="tb-flag war hidden" id="tbWar"></div>
+      <button id="fsBtn" class="tb-btn" title="Tam ekran">⛶</button>
+    </div>
+
+    <nav id="sidebar"></nav>
+
+    <section id="panel" class="frame hidden">
+      <header><h2 id="panelTitle"></h2><button id="panelClose" class="x" title="Kapat (Esc)">✕</button></header>
+      <div id="panelBody"></div>
+    </section>
+
+    <div id="toasts"></div>
+    <div id="inbox"></div>
+    <div id="actionBar" class="frame hidden"></div>
+    <div id="setupBanner" class="frame hidden"></div>
+    <div id="tooltip" class="frame hidden"></div>
+
+    <div id="dpad" class="hidden">
+      <button data-k="w" class="up">▲</button>
+      <button data-k="a" class="left">◀</button>
+      <button data-k="d" class="right">▶</button>
+      <button data-k="s" class="down">▼</button>
+      <button id="zoomIn" class="zin">+</button>
+      <button id="zoomOut" class="zout">−</button>
+    </div>
+  </div>
+
+  <div id="dialog" class="hidden"></div>
+  <div id="endScreen" class="hidden"></div>
+
+  <div id="start">
+    <div class="start-card frame">
+      <div class="crest">✠</div>
+      <h1>Hükümdarlar Çağı</h1>
+      <p class="sub">Dokuz devlet, tek kıta. Diplomasi, ihanet ve savaş.</p>
+
+      <div id="resumeBox" class="resume hidden">
+        <button id="resumeBtn" class="btn big green">Kaldığın Yerden Devam Et</button>
+        <div id="resumeInfo" class="hint"></div>
+        <div class="or">ya da yeni oyun</div>
+      </div>
+
+      <label class="field">
+        <span>Hükümdarlığının adı</span>
+        <input id="nameIn" maxlength="22" placeholder="ör. Kaan İmparatorluğu" autocomplete="off">
+      </label>
+
+      <div class="field">
+        <span>Oyun modu</span>
+        <div id="modeBtns" class="seg2">
+          <button data-m="pc">Bilgisayar<small>WASD + fare</small></button>
+          <button data-m="mobile">Mobil<small>dokunmatik kontroller</small></button>
+        </div>
+      </div>
+
+      <div class="field">
+        <span>İdeoloji</span>
+        <div id="ideoCards"></div>
+      </div>
+
+      <button id="startBtn" class="btn big" disabled>Başla</button>
+      <div id="startHint" class="hint"></div>
+      <div id="installBox" class="install hidden">
+        <button id="installBtn" class="btn">📲 Uygulamayı Yükle</button>
+        <span>Ana ekrana ikon olarak eklenir, tam ekran ve internetsiz çalışır.</span>
+      </div>
+      <div id="iosHint" class="install hidden">
+        <span>iPhone/iPad: Safari'de <b>Paylaş</b> → <b>Ana Ekrana Ekle</b> ile uygulama olarak yükleyebilirsin.</span>
+      </div>
+      <p class="foot">Şimdilik 8 bot ülkeye karşı yerel oyun · Kısayollar: 1-4 menüler, Boşluk başkente dön, Q iptal</p>
+    </div>
+  </div>
+
+  <script src="js/util.js"></script>
+  <script src="js/mapgen.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/bot.js"></script>
+  <script src="js/render.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
