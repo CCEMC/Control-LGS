@@ -56,6 +56,10 @@ bir sonraki açılışta yeni sürümü alır.
   çatışma sürerken saldıranın rengi sınırdan şehrin içine doğru yavaş yavaş yayılır (şehir üstünde %ilerleme yazar).
 - Saldıran birlik, çatışma bitene kadar komuta edilemez. **Saldırı altındaki şehirdeki askerler şehri terk edemez**, savunmak zorundadır (takviye gönderilebilir).
 - Her şehrin askeri, haritada toprağın üzerine yazılır (altın alt çizgi = senin birliğin).
+- **Fabrika bağlantısı (ikmal):** bir şehir, kendi toprağın üzerinden hiçbir fabrikaya bağlı değilse oradaki askerler
+  **%50 daha zayıf saldırır, %50 daha zayıf savunur ve %50 daha yavaş yürür**. Bu askerlerin üstünde sarı bir **❗** işareti görünür
+  (üstüne gelince şehir ipucunda, Askeri Yönetim menüsünde de uyarı çıkar). Çözüm: kopuk bölgeye fabrika kur ya da toprağını fabrikalı bölgeyle birleştir.
+  Müttefikin fabrikaya bağlı şehri de seni besler; isyancılar bu kurala tabi değildir.
 
 ## Kontroller
 

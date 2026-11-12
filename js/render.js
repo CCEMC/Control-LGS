@@ -542,6 +542,22 @@
       ctx.restore();
     }
 
+    // Fabrikaya bağlı olmayan (zayıf) birliklerin üstündeki uyarı işareti: sarı üçgen + ünlem
+    weakBadge(ctx, x, y, size) {
+      const bob = Math.sin(performance.now() / 260) * size * 0.07;
+      const cy = y + bob, r = size * 0.62;
+      ctx.save();
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(x, cy - r); ctx.lineTo(x + r * 0.95, cy + r * 0.72); ctx.lineTo(x - r * 0.95, cy + r * 0.72); ctx.closePath();
+      ctx.fillStyle = '#f5b800'; ctx.fill();
+      ctx.lineWidth = Math.max(1.6, size * 0.14); ctx.strokeStyle = '#7a160c'; ctx.stroke();
+      ctx.fillStyle = '#4a0d07'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = `bold ${size * 0.95}px ${FONT}`;
+      ctx.fillText('!', x, cy + r * 0.2);
+      ctx.restore();
+    }
+
     token(ctx, x, y, u, opts) {
       const g = this.game, s = this.ui.scale;
       const c = g.countries[u.owner];
@@ -567,6 +583,7 @@
       }
       ctx.fillStyle = '#fbf1d6'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(txt, x, y + 0.5);
+      if (u.weak) this.weakBadge(ctx, x, y0 - 9 * s, 15 * s);
       if (u.army !== null) {
         const army = g.armies.find((a) => a.id === u.army);
         if (army) {
@@ -627,6 +644,7 @@
         ctx.strokeStyle = '#d6a22a'; ctx.lineWidth = Math.max(2, fs * 0.13); ctx.lineCap = 'round';
         ctx.beginPath(); ctx.moveTo(x - tw / 2, y + fs * 0.58); ctx.lineTo(x + tw / 2, y + fs * 0.58); ctx.stroke();
       }
+      if (u.weak) this.weakBadge(ctx, x, y0 - fs * 0.32, fs * 0.95);
       if (opts && opts.marked) {
         ctx.setLineDash([3, 3]); ctx.strokeStyle = '#8a5a12'; ctx.lineWidth = 2;
         ctx.strokeRect(x0 - 2, y0 - 2, w + 4, h + 4); ctx.setLineDash([]);

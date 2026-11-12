@@ -38,8 +38,10 @@
     const fp = game.price(cid, 'factory');
 
     if (facs < want && c.money >= fp + (atWar ? 6 : 0) && rnd() < (atWar ? 0.3 : 0.7)) {
+      // fabrikasız (bağlantısı kopmuş) bölgede askerleri varsa oraya fabrika kur; yoksa iç şehirleri tercih et
+      const unfed = (x) => (game.supply && !game.supply[x.id] && game.troopsAt(x.id, cid) > 3000 ? 0 : 1);
       const opts = game.citiesOf(cid).filter((x) => x.factories < game.factoryLimit(cid))
-        .sort((a, b) => (game.isBorderCity(a.id) - game.isBorderCity(b.id)) || (b.factories - a.factories));
+        .sort((a, b) => (unfed(a) - unfed(b)) || (game.isBorderCity(a.id) - game.isBorderCity(b.id)) || (b.factories - a.factories));
       if (opts.length) game.cmdBuy(cid, 'factory', { city: opts[0].id });
       else if (c.limitBuys < 3) game.cmdBuy(cid, 'factoryLimit');
     }
@@ -99,7 +101,7 @@
         const t = game.cities[n];
         if (!game.hostile(cid, t.owner) || attacked.has(n)) continue;
         const effD = game.effDefense(t, game.defendersOf(n, cid));
-        const effA = avail * game.atkMult(cid, t.owner);
+        const effA = avail * game.unitAtk(u, t.owner);
         const margin = effA - effD * 1.18 - 1500;
         if (margin <= 0) continue;
         const isCap = game.countries.some((k) => k.capital === n && k.alive);
