@@ -3,6 +3,17 @@
 Eski harita temalı 2D strateji oyunu. Şimdilik 8 bot ülkeye karşı oynanır.
 Bilgisayarda ve telefonda çalışır; telefona **uygulama (PWA)** olarak yüklenebilir.
 
+## ▶ Hemen oyna: https://ccemc.github.io/Control-LGS/
+
+Telefona yüklemek için kamerayla okut, açılan sayfada **Uygulamayı Yükle**'ye bas
+(iPhone: Safari → Paylaş → Ana Ekrana Ekle).
+
+<img src="telefon-qr.png" alt="Oyunun adresine giden QR kod" width="260">
+
+**Güncelleme yayınlamak:** dosyaları değiştir, `sw.js` içindeki `VERSION` değerini arttır, sonra
+`git add -A`, `git commit -m "açıklama"`, `git push`. Site 1-2 dakika içinde güncellenir; telefondaki uygulama
+bir sonraki açılışta yeni sürümü alır.
+
 ## Bilgisayarda oyna
 
 - `oyunu-baslat.bat` dosyasına çift tıkla (Python gerekir) → tarayıcıda `http://localhost:8080` açılır.
@@ -20,7 +31,7 @@ Bilgisayarda ve telefonda çalışır; telefona **uygulama (PWA)** olarak yükle
 
 ## Gerçek uygulama olarak yükle (ikon, tam ekran, internetsiz)
 
-1. Klasörü ücretsiz bir HTTPS barındırmaya koy (ör. GitHub Pages veya Netlify).
+1. Oyun zaten GitHub Pages'te yayında: https://ccemc.github.io/Control-LGS/
 2. Telefonda o adresi aç:
    - **Android (Chrome):** giriş ekranında çıkan **📲 Uygulamayı Yükle** butonuna bas (ya da menü → *Uygulamayı yükle*).
    - **iPhone (Safari):** **Paylaş → Ana Ekrana Ekle**.
