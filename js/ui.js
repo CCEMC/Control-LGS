@@ -81,8 +81,12 @@
       document.body.classList.toggle('mobile', this.mode === 'mobile');
       this.$('hud').classList.remove('hidden');
       const sb = this.$('sidebar');
-      sb.innerHTML = Object.keys(MENU_TITLES).map((k) =>
-        `<button data-menu="${k}" title="${MENU_TITLES[k]}">${ICONS[k]}<span>${MENU_TITLES[k]}</span></button>`).join('');
+      const keys = Object.keys(MENU_TITLES);
+      sb.innerHTML = keys.map((k, i) =>
+        `<button data-menu="${k}" title="${MENU_TITLES[k]} (${i + 1})" aria-label="${MENU_TITLES[k]}">${ICONS[k]}<span>${MENU_TITLES[k]}</span><kbd>${i + 1}</kbd><i class="sb-dot hidden"></i></button>`).join('');
+      this._sideBtns = [...sb.querySelectorAll('button')];
+      this._sideDots = {};
+      for (const b of this._sideBtns) this._sideDots[b.dataset.menu] = b.querySelector('.sb-dot');
       sb.addEventListener('click', (e) => {
         const b = e.target.closest('button[data-menu]');
         if (b) this.openMenu(b.dataset.menu);
@@ -211,6 +215,7 @@
       this.selUnit = u ? u.id : null;
       this.amountK = u ? Math.ceil(u.troops / 1000) : 0;
       this.barKey = '';
+      if (this.$('actionBar')) this.updateActionBar();
     }
     cancel() {
       if (this.targeting) {
@@ -300,9 +305,16 @@
         } else if (key.startsWith('unit')) {
           const maxK = Math.max(1, Math.ceil(sel.troops / 1000));
           bar.innerHTML = `<div class="bar-row"><span>Seçili birlik: <b id="selInfo"></b></span>
-            <label class="amt">Taşınacak miktar <input type="range" id="amtRange" min="1" max="${maxK}" step="1" value="${Math.min(this.amountK, maxK)}"> <b id="amtVal"></b></label>${cancelBtn}</div>
+            <label class="amt">Taşınacak miktar <input type="range" id="amtRange" min="1" max="${maxK}" step="1" value="${Math.min(this.amountK, maxK)}"> <b id="amtVal"></b></label>
+            <span class="amt-quick" role="group" aria-label="Hızlı miktar seçimi">
+              <button class="btn sm" data-bar="pct" data-pct="0.25">%25</button>
+              <button class="btn sm" data-bar="pct" data-pct="0.5">%50</button>
+              <button class="btn sm" data-bar="pct" data-pct="0.75">%75</button>
+              <button class="btn sm" data-bar="pct" data-pct="1">Tümü</button>
+            </span>${cancelBtn}</div>
             <small>Hedef şehre ${this.mode === 'pc' ? 'tıkla' : 'dokun'}: kendi şehrin = taşı · komşu düşman = saldır</small>`;
-        } else bar.innerHTML = '';
+          this._pctBtns = [...bar.querySelectorAll('[data-pct]')];
+        } else { bar.innerHTML = ''; this._pctBtns = null; }
       }
       // Her seferinde: seçim iptal edilince (barKey sıfırlanıp yine '' kalınca) çubuk açık kalıyordu
       bar.classList.toggle('hidden', !key);
@@ -319,6 +331,12 @@
         if (this.amountK > maxK) this.amountK = maxK;
         this._txt('selInfo', `${fmtK(sel.troops)} · ${g.cities[sel.city].name}${sel.weak ? ' · ❗ fabrikaya bağlı değil (−%50)' : ''}`);
         this._txt('amtVal', fmtK(Math.min(sel.troops, this.amountK * 1000)));
+        const q = this._pctBtns;
+        if (q) for (let i = 0; i < q.length; i++) {
+          const pct = +q[i].dataset.pct;
+          const target = pct >= 1 ? maxK : Math.max(1, Math.min(maxK, Math.round(maxK * pct)));
+          q[i].classList.toggle('on', this.amountK === target);
+        }
       } else if (this.barKey.startsWith('target') && this.targeting && this.targeting.info) {
         this._txt('pickInfo', this.targeting.info());
       } else if (this.barKey === 'mark') {
@@ -337,6 +355,16 @@
         this.targeting = null; this.barKey = '';
         this.updateActionBar();
         if (t.done) t.done();
+      }
+      else if (b.dataset.bar === 'pct') {
+        const sel = this.selectedUnit();
+        if (!sel) return;
+        const maxK = Math.max(1, Math.ceil(sel.troops / 1000));
+        const pct = +b.dataset.pct;
+        this.amountK = pct >= 1 ? maxK : Math.max(1, Math.min(maxK, Math.round(maxK * pct)));
+        const r = this.$('amtRange');
+        if (r) r.value = this.amountK;
+        this.updateBarLive();
       }
       else if (b.dataset.bar === 'army') {
         const r = g.cmdCreateArmy(g.playerId, [...this.marked], b.dataset.mode);
@@ -370,6 +398,31 @@
         this._topMenu = this.menu;
         const btns = this._sideBtns || (this._sideBtns = [...document.querySelectorAll('#sidebar button')]);
         for (let i = 0; i < btns.length; i++) btns[i].classList.toggle('active', btns[i].dataset.menu === this.menu);
+      }
+      if (this._sideDots) {
+        let dipOn = warOn || this.inbox.length > 0;
+        if (!dipOn) {
+          for (let i = 0; i < g.countries.length; i++) {
+            const c = g.countries[i];
+            if (!c.alive || c.isRebel || c.isPlayer || c.absent) continue;
+            if (g.warRightState(p.id, c.id).state === 'ready') { dipOn = true; break; }
+          }
+        }
+        if (this._dipDot !== dipOn) {
+          this._dipDot = dipOn;
+          const d = this._sideDots.diplomacy;
+          if (d) { d.classList.toggle('hidden', !dipOn); d.classList.toggle('war', warOn); }
+        }
+        let hasWeak = false;
+        for (let i = 0; i < g.units.length; i++) {
+          const u = g.units[i];
+          if (!u.dead && u.owner === p.id && u.weak) { hasWeak = true; break; }
+        }
+        if (this._milDot !== hasWeak) {
+          this._milDot = hasWeak;
+          const d = this._sideDots.military;
+          if (d) { d.classList.toggle('hidden', !hasWeak); d.classList.add('warn'); }
+        }
       }
       // gelen teklif süreleri
       if (g.proposals.length) {
@@ -408,9 +461,17 @@
       if (c.building.length) struct.push(`🏗 ${c.building.length} fabrika inşaatta`);
       if (c.cityDef) struct.push('şehir savunması');
       if (c.airDef) struct.push('hava koruma');
+      const sel = this.selUnit !== null ? this.selectedUnit() : null;
+      let actHint = '';
+      if (sel && cityId !== sel.city) {
+        if (g.friendly(sel.owner, c.owner)) actHint = '<div class="tt-hint ok">✓ Tıkla: destek / taşı</div>';
+        else if (g.hostile(sel.owner, c.owner) && g.cities[sel.city].neighbors.includes(cityId)) actHint = '<div class="tt-hint atk">⚔ Tıkla: saldır</div>';
+        else if (!g.hostile(sel.owner, c.owner) && !o.isRebel) actHint = '<div class="tt-hint">⚠ Saldırı için önce savaş ilan et</div>';
+        else actHint = '<div class="tt-hint">✗ Sınır komşusu değil</div>';
+      }
       const html = `<div class="tt-h">${isCap ? '★ ' : ''}${esc(c.name)}</div>
         <div class="tt-o"><span class="sw" style="background:${o.color}"></span>${esc(o.name)}${isCap ? ' · başkent' : ''}${g.isBorderCity(cityId) ? ' · sınır' : ''}</div>
-        ${troops}${struct.length ? `<div class="tt-s">${struct.join(' · ')}</div>` : ''}${inc ? `<div class="tt-w">⚔︎ saldırı altında!</div>` : ''}${units.some((u) => u.weak) ? `<div class="tt-w">❗ Fabrikaya bağlı değil: asker −%50</div>` : ''}`;
+        ${troops}${struct.length ? `<div class="tt-s">${struct.join(' · ')}</div>` : ''}${inc ? `<div class="tt-w">⚔︎ saldırı altında!</div>` : ''}${units.some((u) => u.weak) ? `<div class="tt-w">❗ Fabrikaya bağlı değil: asker −%50</div>` : ''}${actHint}`;
       const changed = html !== this._tipHtml || this._tipHidden !== false;
       if (changed) {
         if (html !== this._tipHtml) { tip.innerHTML = html; this._tipHtml = html; }
@@ -532,9 +593,11 @@
       const human = (c) => (g.mp && c.isHuman ? '<i class="hm" title="Gerçek oyuncu">👤</i>' : '');
       const list = others.map((c) => {
         const st = c.alive ? this.relStatus(me, c.id) : { t: 'Yıkıldı', c: 'dead' };
-        const sub = !c.alive ? 'yıkıldı' : st.c === 'war' ? '⚔ savaşta' : st.c === 'ally' ? '🤝 müttefik' : this.relWord(g.rel[me][c.id]);
+        const rv = g.rel[me][c.id];
+        const sub = !c.alive ? 'yıkıldı' : st.c === 'war' ? '⚔ savaşta' : st.c === 'ally' ? '🤝 müttefik' : this.relWord(rv);
+        const rBadge = c.alive ? `<small class="rl-s ${rv >= 25 ? 'pos' : rv <= -25 ? 'neg' : ''}">${rv > 0 ? '+' : ''}${rv}</small>` : '';
         return `<li data-act="dsel" data-id="${c.id}" tabindex="0" role="button" aria-pressed="${this.diploSel === c.id}" class="${this.diploSel === c.id ? 'sel' : ''} ${st.c}">${this.seal(c)}
-          <span class="nm"><b>${esc(c.name)}${human(c)}</b><small>${sub}${c.alive && nbrs.has(c.id) ? ' · komşu' : ''}</small></span></li>`;
+          <span class="nm"><b>${esc(c.name)}${human(c)}</b><small>${sub}${c.alive && nbrs.has(c.id) ? ' · komşu' : ''}</small></span>${rBadge}</li>`;
       }).join('');
       let info = '<div class="empty">Diplomasi kuracak ülke yok.</div>';
       const t = this.diploSel !== null ? g.countries[this.diploSel] : null;
@@ -570,6 +633,11 @@
           const vs = (label, mine, theirs, fmt) => `<div class="vs"><div class="vs-h"><span>${this.L(() => fmt(mine()))}</span><small>${label}</small><span>${this.L(() => fmt(theirs()))}</span></div>
             <div class="vs-bar" style="--a:${P.color};--b:${t.color}">${this.LW(() => { const a = mine(), b = theirs(); return a + b > 0 ? (a / (a + b)) * 100 : 50; })}</div></div>`;
           const cnt = (k) => () => { let n = 0; for (const c of g.cities) if (c.owner === k) n++; return n; };
+          const statsRow = `<div class="dp-stats">
+            <div><span>Şehir</span><b>${this.L(() => String(cnt(id)()))}</b></div>
+            <div><span>Asker</span><b>${this.L(() => fmtK(g.totalTroops(id)))}</b></div>
+            <div><span>Fabrika</span><b>${this.L(() => String(g.factoriesOf(id)))}</b></div>
+          </div>`;
           const power = `<div class="dcard"><h5>Güç dengesi <small>— sen ⟷ ${esc(t.name)}</small></h5>
             ${vs('Asker', () => g.totalTroops(me), () => g.totalTroops(id), fmtK)}
             ${vs('Şehir', cnt(me), cnt(id), String)}
@@ -609,7 +677,7 @@
           if (myAl) pact = ally ? B('leave', `İttifaktan Ayrıl · ${fmtMoney(lvPrice)}`, { dis: P.money < lvPrice }) : `<span class="muted">Zaten ${esc(myAl.name)} ittifakındasın.</span>`;
           else if (al) pact = B('alliance', `⚑ Katılma Talebi · ${fmtMoney(alPrice)}`, { dis: war || P.money < alPrice, title: `${al.name}: tüm üyeler onaylamalı` });
           else pact = B('alliance', `🤝 İttifak Teklif Et · ${fmtMoney(alPrice)}`, { dis: war || !!g.pendingProposal(me, id, 'alliance') || P.money < alPrice });
-          body = `${relm}${pendHtml}
+          body = `${statsRow}${relm}${pendHtml}
             <div class="dcards">
               <div class="dcard ${war ? 'war' : ''}"><h5>Savaş ve barış</h5>${conflict}</div>
               ${deals}
@@ -803,7 +871,8 @@
           const c = g.countries[id];
           if (c && c.capital >= 0 && this.renderer) {
             const k = g.cities[c.capital];
-            this.renderer.cam.x = k.x; this.renderer.cam.y = k.y;
+            if (this.renderer.focus) this.renderer.focus(k.x, k.y);
+            else { this.renderer.cam.x = k.x; this.renderer.cam.y = k.y; }
             this.renderer.fx.push({ kind: 'capture', x: k.x, y: k.y, t0: performance.now(), dur: 1400 });
             if (this.mode === 'mobile') this.openMenu(null);
           }
@@ -849,7 +918,11 @@
         case 'adisband': res(g.cmdDisbandArmy(me, id), 'Ordu dağıtıldı.'); break;
         case 'afocus': {
           const u = g.units.find((x) => x.army === id && !x.dead);
-          if (u && this.renderer) { const [x, y] = g.unitPos(u); this.renderer.cam.x = x; this.renderer.cam.y = y; }
+          if (u && this.renderer) {
+            const [x, y] = g.unitPos(u);
+            if (this.renderer.focus) this.renderer.focus(x, y);
+            else { this.renderer.cam.x = x; this.renderer.cam.y = y; }
+          }
           break;
         }
         case 'buy': this.buy(b.dataset.item); break;
@@ -858,7 +931,8 @@
           if (cut.length && this.renderer) {
             this.cutIdx = ((this.cutIdx || 0) + 1) % cut.length;
             const c = cut[this.cutIdx];
-            this.renderer.cam.x = c.x; this.renderer.cam.y = c.y;
+            if (this.renderer.focus) this.renderer.focus(c.x, c.y);
+            else { this.renderer.cam.x = c.x; this.renderer.cam.y = c.y; }
             if (this.mode === 'mobile') this.openMenu(null);
           }
           break;
@@ -1061,10 +1135,11 @@
 
     dialog(title, body, buttons, wide, extra) {
       const layer = this.$('dialog');
-      layer.innerHTML = `<div class="dlg frame ${wide ? 'wide' : ''}"><h3>${title}</h3><div class="dlg-b">${body}</div>
+      layer.innerHTML = `<div class="dlg frame ${wide ? 'wide' : ''}" role="dialog" aria-modal="true" aria-labelledby="dlgTitle"><h3 id="dlgTitle">${title}</h3><div class="dlg-b">${body}</div>
         <div class="dlg-f">${buttons.map((b, i) => `<button class="btn ${b.cls || ''}" data-i="${i}">${b.label}</button>`).join('')}</div></div>`;
       layer.classList.remove('hidden');
       document.body.classList.add('dialog-open');
+      layer.oninput = null;
       layer.onclick = (e) => {
         if (extra && extra(e)) return;
         const b = e.target.closest('button[data-i]');
@@ -1076,7 +1151,7 @@
       };
     }
     closeDialog() {
-      const l = this.$('dialog'); l.classList.add('hidden'); l.innerHTML = ''; document.body.classList.remove('dialog-open');
+      const l = this.$('dialog'); l.classList.add('hidden'); l.oninput = null; l.innerHTML = ''; document.body.classList.remove('dialog-open');
       this.paused = false; // oyun menüsü / yardım kapanınca (tek oyunculuda) oyun devam eder
     }
     dialogOpen() { return !this.$('dialog').classList.contains('hidden'); }
@@ -1086,12 +1161,20 @@
       const g = this.game;
       if (this.dialogOpen()) return;
       const sp = !g.mp;
+      const mPct = G.Audio ? Math.round(G.Audio.musicVol * 100) : 60;
+      const sPct = G.Audio ? Math.round(G.Audio.sfxVol * 100) : 85;
+      const volBox = G.Audio ? `<div class="gm-vols">
+          <label><span>🎵 Müzik</span><input type="range" id="gmMusic" min="0" max="100" value="${mPct}"><b id="gmMusicV">${mPct}%</b></label>
+          <label><span>🔔 Efekt</span><input type="range" id="gmSfx" min="0" max="100" value="${sPct}"><b id="gmSfxV">${sPct}%</b></label>
+        </div>` : '';
       const body = `<div class="gm">
           ${sp ? '<p class="gm-paused">Oyun duraklatıldı. Zaman akmıyor.</p>' : `<p class="note">Çevrimiçi oyun duraklatılamaz${this.netCode ? ` · Oda <b>${esc(this.netCode)}</b>` : ''}.</p>`}
           <button class="btn big green" data-gm="resume">▶ Devam Et</button>
           <button class="btn" data-gm="sound">${G.Audio && G.Audio.muted ? '🔇 Ses kapalı — aç' : '🔊 Ses açık — kapat'}</button>
+          ${volBox}
           <button class="btn" data-gm="help">📖 Nasıl Oynanır</button>
           <button class="btn red" data-gm="menu">🏠 Ana Menüye Dön</button>
+          ${this.mode !== 'mobile' ? '<p class="gm-keys"><b>Kısayollar:</b> WASD kamera · 1–4 menüler · Boşluk başkent · Q iptal · P duraklat · M ses</p>' : ''}
           <p class="gm-info">${esc(g.player.name)} · ${esc(((G.MapGen.TYPES.find((t) => t.key === g.mapType)) || { name: 'Kıta' }).name)} haritası · ${fmtTime(g.time)} · Control-LGS ${G.VERSION_LABEL}</p></div>`;
       this.dialog(sp ? '⏸ Duraklatıldı' : '☰ Oyun Menüsü', body, [], false, (e) => {
         const b = e.target.closest('[data-gm]');
@@ -1103,6 +1186,11 @@
         else if (a === 'menu') this.confirmMainMenu();
         return true;
       });
+      this.$('dialog').oninput = (e) => {
+        if (!G.Audio) return;
+        if (e.target.id === 'gmMusic') { G.Audio.setMusic(e.target.value / 100); this._txt('gmMusicV', e.target.value + '%'); }
+        else if (e.target.id === 'gmSfx') { G.Audio.setSfx(e.target.value / 100); this._txt('gmSfxV', e.target.value + '%'); }
+      };
       this.paused = sp;
     }
     openHelp(back) {

@@ -339,6 +339,8 @@
     musicBus.gain.value = state.music * 0.8;
   }
   function setMuted(m) { state.muted = !!m; saveState(); applyVolumes(); if (!m) resume(); }
+  function setSfx(v) { state.sfx = Math.max(0, Math.min(1, +v || 0)); saveState(); applyVolumes(); }
+  function setMusic(v) { state.music = Math.max(0, Math.min(1, +v || 0)); saveState(); applyVolumes(); }
   function toggle() { setMuted(!state.muted); return !state.muted; }
 
   // tarayıcı sekmesi arka plana geçince sustur
@@ -349,8 +351,10 @@
   });
 
   G.Audio = {
-    init, resume, sfx, startMusic, stopMusic, setMood, battleLevel, onGameEvent, setMuted, toggle,
+    init, resume, sfx, startMusic, stopMusic, setMood, battleLevel, onGameEvent, setMuted, setSfx, setMusic, toggle,
     get muted() { return state.muted; },
+    get sfxVol() { return state.sfx; },
+    get musicVol() { return state.music; },
     get running() { return !!ctx && ctx.state === 'running'; },
     unlock() { init(); resume(); },
     // çıkış seviyesi (RMS, 0..1): müziğin/seslerin gerçekten üretildiğini denetlemek için

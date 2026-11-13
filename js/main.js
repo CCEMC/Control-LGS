@@ -172,7 +172,10 @@
     $('startBtn').disabled = !ok || busy;
     $('hostBtn').disabled = !ok || busy;
     $('joinBtn').disabled = !ok || busy || G.Net.cleanCode($('codeIn').value).length !== 5;
-    $('startHint').textContent = !$('nameIn').value.trim() ? 'Bir ad gir' : !startState.ideology ? 'Bir ideoloji seç' : 'Hazırsın!';
+    const hint = $('startHint');
+    const ready = ok && !busy;
+    hint.textContent = !$('nameIn').value.trim() ? 'Bir ad gir' : !startState.ideology ? 'Bir ideoloji seç' : '✓ Hazırsın! Tek başına ya da oda kurarak başla.';
+    hint.classList.toggle('ready', ready);
   }
 
   // ---------- çevrimiçi lobi ----------
@@ -379,6 +382,7 @@
       const dt = Math.min(0.1, (now - last) / 1000);
       last = now;
       // kamera
+      if (keys.w || keys.s || keys.a || keys.d) renderer._camTween = null;
       const sp = (keys.shift ? 1400 : 800) * dt / renderer.cam.zoom;
       if (keys.w) renderer.cam.y -= sp;
       if (keys.s) renderer.cam.y += sp;
@@ -416,7 +420,7 @@
       if (e.code === 'Digit2') ui.openMenu('military');
       if (e.code === 'Digit3') ui.openMenu('alliances');
       if (e.code === 'Digit4') ui.openMenu('shop');
-      if (e.code === 'Space' && game.player.capital >= 0) { const c = game.cities[game.player.capital]; renderer.cam.x = c.x; renderer.cam.y = c.y; e.preventDefault(); }
+      if (e.code === 'Space' && game.player.capital >= 0) { const c = game.cities[game.player.capital]; renderer.focus(c.x, c.y); e.preventDefault(); }
     });
     window.addEventListener('keyup', (e) => { if (keyMap[e.code]) keys[keyMap[e.code]] = false; });
     window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
@@ -451,6 +455,7 @@
         const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
         if (!drag.moved && Math.hypot(dx, dy) > (e.pointerType === 'touch' ? 10 : 6)) drag.moved = true;
         if (drag.moved) {
+          renderer._camTween = null;
           renderer.cam.x = drag.cx - dx / renderer.cam.zoom;
           renderer.cam.y = drag.cy - dy / renderer.cam.zoom;
           renderer.clampCam();
@@ -490,7 +495,7 @@
     const miniJump = (e) => {
       const r = mini.getBoundingClientRect();
       const w = renderer.miniToWorld(e.clientX - r.left, e.clientY - r.top);
-      if (w) { renderer.cam.x = w[0]; renderer.cam.y = w[1]; renderer.clampCam(); }
+      if (w) { renderer._camTween = null; renderer.cam.x = w[0]; renderer.cam.y = w[1]; renderer.clampCam(); }
     };
     mini.addEventListener('pointerdown', (e) => { miniDrag = true; mini.setPointerCapture(e.pointerId); miniJump(e); });
     mini.addEventListener('pointermove', (e) => { if (miniDrag) miniJump(e); });

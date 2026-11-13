@@ -265,11 +265,18 @@
     toWorld(sx, sy) { return [(sx - this.vw / 2) / this.cam.zoom + this.cam.x, (sy - this.vh / 2) / this.cam.zoom + this.cam.y]; }
     toScreen(wx, wy) { return [(wx - this.cam.x) * this.cam.zoom + this.vw / 2, (wy - this.cam.y) * this.cam.zoom + this.vh / 2]; }
     zoomAt(sx, sy, factor) {
+      this._camTween = null;
       const [wx, wy] = this.toWorld(sx, sy);
       this.cam.zoom = U.clamp(this.cam.zoom * factor, this.minZoom(), 2.4);
       this.cam.x = wx - (sx - this.vw / 2) / this.cam.zoom;
       this.cam.y = wy - (sy - this.vh / 2) / this.cam.zoom;
       this.clampCam();
+    }
+    focus(wx, wy, dur = 260) {
+      const m = this.game.map;
+      const tx = U.clamp(wx, 0, m.W), ty = U.clamp(wy, 0, m.H);
+      if (Math.hypot(tx - this.cam.x, ty - this.cam.y) < 4) { this.cam.x = tx; this.cam.y = ty; this._camTween = null; return; }
+      this._camTween = { x0: this.cam.x, y0: this.cam.y, x1: tx, y1: ty, t0: performance.now(), dur };
     }
 
     cityAt(wx, wy) {
@@ -308,6 +315,15 @@
       this.frame++;
       if (this.version !== g.version) this.rebuildDynamic();
       const z = cam.zoom, now = performance.now();
+      const tw = this._camTween;
+      if (tw) {
+        const p = Math.min(1, (now - tw.t0) / tw.dur);
+        const e = 1 - Math.pow(1 - p, 3);
+        cam.x = tw.x0 + (tw.x1 - tw.x0) * e;
+        cam.y = tw.y0 + (tw.y1 - tw.y0) * e;
+        this.clampCam();
+        if (p >= 1) this._camTween = null;
+      }
       const ox = this.vw / 2 - cam.x * z, oy = this.vh / 2 - cam.y * z;
       const [vx0, vy0] = this.toWorld(0, 0), [vx1, vy1] = this.toWorld(this.vw, this.vh);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -1091,11 +1107,23 @@
       const [ax, ay] = this.toScreen(a.x, a.y), [bx, by] = this.toScreen(b.x, b.y);
       const friendly = g.friendly(sel.owner, b.owner);
       const attack = !friendly && g.hostile(sel.owner, b.owner) && a.neighbors.includes(b.id);
+      const col = friendly ? 'rgba(40,120,50,0.9)' : attack ? 'rgba(180,25,15,0.95)' : 'rgba(60,60,60,0.6)';
       ctx.setLineDash([10, 6]);
-      ctx.strokeStyle = friendly ? 'rgba(40,120,50,0.9)' : attack ? 'rgba(180,25,15,0.95)' : 'rgba(60,60,60,0.6)';
+      ctx.strokeStyle = col;
       ctx.lineWidth = 3;
       ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke(); ctx.setLineDash([]);
-      if (attack) this.swords(ctx, bx, by - 30, this.ui.scale);
+      if (friendly || attack) {
+        const ang = Math.atan2(by - ay, bx - ax), s = ui.scale, hs = 9 * s;
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        ctx.moveTo(bx, by);
+        ctx.lineTo(bx - Math.cos(ang - 0.45) * hs, by - Math.sin(ang - 0.45) * hs);
+        ctx.lineTo(bx - Math.cos(ang + 0.45) * hs, by - Math.sin(ang + 0.45) * hs);
+        ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.arc(bx, by, 14 * s, 0, Math.PI * 2);
+        ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.stroke();
+      }
+      if (attack) this.swords(ctx, bx, by - 30, ui.scale);
     }
 
     drawMinimap() {
