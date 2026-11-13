@@ -91,7 +91,7 @@
       this.over = false;
 
       this.cities = this.map.cities.map((c) => ({
-        id: c.id, name: c.name, x: c.x, y: c.y, neighbors: c.neighbors, coastal: c.coastal,
+        id: c.id, name: c.name, x: c.x, y: c.y, neighbors: c.neighbors, coastal: c.coastal, terrain: c.terrain || 'ova',
         owner: this.map.owner[c.id], origOwner: this.map.owner[c.id], factories: 0, cityDef: false, airDef: false, building: [],
       }));
 
@@ -198,10 +198,32 @@
       if (this.isRebel(targetOwner)) m *= this.ideo(cid).rebelAtk * (1 + 0.1 * this.iu(cid, 'agit'));
       return m;
     }
-    // birliğin saldırı çarpanı (ideoloji, seviye, blitz + fabrikaya bağlı değilse %50 zayıf)
-    unitAtk(u, targetOwner) { return this.atkMult(u.owner, targetOwner) * (u.weak ? CFG.weakMult : 1); }
-    // hareket süresi çarpanı: fabrikaya bağlı olmayan birlik 2 kat yavaş; Monarşi süvarisi hızlandırır
-    unitSlow(u) { return (u.weak ? 1 / CFG.weakMult : 1) / (1 + 0.15 * this.iu(u.owner, 'cavalry')); }
+    terrainOf(city) {
+      if (typeof city === 'number') city = this.cities[city];
+      const T = G.TERRAIN || (G.MapGen && G.MapGen.TERRAIN);
+      return (city && T && T[city.terrain]) || { key: 'ova', name: 'Ova', icon: '🌾', elev: 0, atk: 1, def: 1, move: 1, desc: '' };
+    }
+    // birliğin saldırı çarpanı (ideoloji, seviye, blitz, ikmal + hedef/çıkış yer şekli)
+    unitAtk(u, targetOwner, toCity, fromCity) {
+      let m = this.atkMult(u.owner, targetOwner) * (u.weak ? CFG.weakMult : 1);
+      const tc = typeof toCity === 'number' ? this.cities[toCity] : (toCity || (u.move && u.move.to !== undefined ? this.cities[u.move.to] : null));
+      const fc = typeof fromCity === 'number' ? this.cities[fromCity] : (fromCity || (u.move && u.move.from !== undefined ? this.cities[u.move.from] : (u.city !== null ? this.cities[u.city] : null)));
+      if (tc) {
+        const tt = this.terrainOf(tc);
+        m *= tt.atk;
+        if (fc) {
+          const ft = this.terrainOf(fc);
+          if (ft.elev > tt.elev && ft.elev >= 2) m *= 1.10; // yüksek irtifa taarruz bonusu (Tepe/Dağ -> alçak arazi)
+        }
+      }
+      return m;
+    }
+    // hareket süresi çarpanı: fabrikaya bağlı olmayan birlik 2 kat yavaş; Monarşi süvarisi hızlandırır; arazi etkiler
+    unitSlow(u, toCity) {
+      const tc = typeof toCity === 'number' ? this.cities[toCity] : (toCity || (u.move && u.move.to !== undefined ? this.cities[u.move.to] : null));
+      const tMod = tc ? this.terrainOf(tc).move : 1;
+      return ((u.weak ? 1 / CFG.weakMult : 1) / (1 + 0.15 * this.iu(u.owner, 'cavalry'))) * tMod;
+    }
 
     // Hangi şehirler kendi fabrikalarından (kendi toprağı üzerinden) beslenebiliyor?
     // Bağlantısı kopan şehirlerdeki askerler (u.weak) %50 zayıf ve yavaştır.
@@ -278,12 +300,16 @@
     }
 
     defMult(cid, city) {
+      if (typeof city === 'number') city = this.cities[city];
       const c = this.countries[cid];
       let m = c.isRebel ? 1 : (1 + c.defLvl * CFG.upgradeStep) * this.ideo(cid).def;
-      if (city && city.cityDef) m *= 2;
-      if (city && !c.isRebel) {
-        if (city.origOwner === cid) m *= 1 + 0.1 * this.iu(cid, 'guard'); // Demokrasi: Ulusal Muhafız
-        if (c.capital === city.id) m *= 1 + 0.25 * this.iu(cid, 'royal'); // Monarşi: Kraliyet Muhafızları
+      if (city) {
+        m *= this.terrainOf(city).def;
+        if (city.cityDef) m *= 2;
+        if (!c.isRebel) {
+          if (city.origOwner === cid) m *= 1 + 0.1 * this.iu(cid, 'guard'); // Demokrasi: Ulusal Muhafız
+          if (c.capital === city.id) m *= 1 + 0.25 * this.iu(cid, 'royal'); // Monarşi: Kraliyet Muhafızları
+        }
       }
       return m;
     }
@@ -589,7 +615,7 @@
         let mover = u;
         if (amount < u.troops) { u.troops -= amount; mover = this.newUnit(cid, null, amount, u.army); mover.weak = u.weak; }
         mover.city = null;
-        mover.move = { kind: 'move', from, to: toCity, path, t0: this.time, t1: this.time + CFG.moveTime * this.unitSlow(mover) };
+        mover.move = { kind: 'move', from, to: toCity, path, t0: this.time, t1: this.time + CFG.moveTime * this.unitSlow(mover, tc) };
         this.emit({ type: 'sound', name: 'march', cid });
         return { ok: true, unit: mover };
       }
@@ -599,7 +625,7 @@
         const part = amount !== undefined && Math.round(amount) < u.troops ? U.clamp(Math.round(amount), 1, u.troops) : u.troops;
         // çok küçük bir kuvvet savunmayı hiç geçemiyorsa saldırı başlamaz
         const defs = this.defendersOf(toCity, cid);
-        const effD = this.effDefense(tc, defs), effA = part * this.unitAtk(u, tc.owner);
+        const effD = this.effDefense(tc, defs), effA = part * this.unitAtk(u, tc.owner, tc, this.cities[from]);
         if (defs.length && effA <= effD && part <= CFG.minAttackRemain) {
           return { err: `${tc.name} savunması (${U.fmtK(Math.round(effD))}) bu küçük kuvveti (${U.fmtK(part)}) geçer` };
         }
@@ -1083,7 +1109,7 @@
       if (this.friendly(u.owner, city.owner)) { this.placeUnit(u, cityId); return; }
       if (!this.hostile(u.owner, city.owner)) { u.move.from = fromId; this.retreat(u); return; }
       const defenders = this.defendersOf(cityId, u.owner);
-      const aM = this.unitAtk(u, city.owner);
+      const aM = this.unitAtk(u, city.owner, city, this.cities[fromId]);
       const effA = u.troops * aM, effD = this.effDefense(city, defenders);
       if (defenders.length && effA <= effD && u.troops <= CFG.minAttackRemain) {
         this.say([u.owner, city.owner], `${this.countries[u.owner].name} ordusu ${city.name} önünde püskürtüldü.`, 'info');
@@ -1375,7 +1401,7 @@
       if (this.friendly(u.owner, city.owner)) { this.placeUnit(u, city.id); return; }
       if (!this.hostile(u.owner, city.owner)) { this.retreat(u); return; }
       const defenders = this.defendersOf(city.id, u.owner);
-      const aM = this.unitAtk(u, city.owner);
+      const aM = this.unitAtk(u, city.owner, city, this.cities[m.from]);
       const effD = this.effDefense(city, defenders);
       const effA = u.troops * aM;
       // savunan kalmadıysa kuşatma süresi dolunca şehir düşer
@@ -1414,14 +1440,14 @@
         for (const u of units) {
           if (u.dead || u.move) continue;
           const here = this.cities[u.city];
-          const aM = (o) => this.unitAtk(u, o);
+          const aM = (t) => this.unitAtk(u, t.owner, t, here);
           if (army.mode === 'attack') {
             const targets = here.neighbors.map((n) => this.cities[n]).filter((c) => this.hostile(cid, c.owner));
             if (targets.length) {
               let best = null, bestScore = -Infinity;
               for (const t of targets) {
                 const effD = this.effDefense(t, this.defendersOf(t.id, cid));
-                const effA = u.troops * aM(t.owner);
+                const effA = u.troops * aM(t);
                 const score = effA - effD * 1.05;
                 if (score > bestScore) { bestScore = score; best = t; }
               }
@@ -1437,7 +1463,7 @@
             let done = false;
             for (const t of lost) {
               const effD = this.effDefense(t, this.defendersOf(t.id, cid));
-              if (u.troops * aM(t.owner) > effD * 1.05) { this.cmdMove(cid, u.id, t.id); done = true; break; }
+              if (u.troops * aM(t) > effD * 1.05) { this.cmdMove(cid, u.id, t.id); done = true; break; }
             }
             if (done) continue;
             const threatenedHere = this.incomingAttacks(u.city).length > 0;

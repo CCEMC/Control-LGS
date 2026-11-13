@@ -91,6 +91,12 @@
       ctx.fillStyle = G.U.hsl(pal.h, pal.s, pal.l); ctx.fill();
       ctx.strokeStyle = 'rgba(40,25,10,.35)'; ctx.lineWidth = 0.5; ctx.stroke();
     }
+    ctx.strokeStyle = 'rgba(58,40,20,.6)'; ctx.lineWidth = 0.8;
+    for (const c of m.cities) {
+      if (c.terrain !== 'dag') continue;
+      const px = ox + c.x * s, py = oy + c.y * s;
+      ctx.beginPath(); ctx.moveTo(px - 2.3, py + 1.5); ctx.lineTo(px, py - 2); ctx.lineTo(px + 2.3, py + 1.5); ctx.stroke();
+    }
     ctx.fillStyle = '#fff3c4';
     for (const id of m.capitals) { const c = m.cities[id]; ctx.beginPath(); ctx.arc(ox + c.x * s, oy + c.y * s, 1.8, 0, Math.PI * 2); ctx.fill(); }
   }
