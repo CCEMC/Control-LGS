@@ -1070,6 +1070,41 @@
       for (const u of units) this.mergeCity(u.city);
       return { ok: true, army };
     }
+    cmdAddUnitsToArmy(cid, armyId, unitIds, amount) {
+      const army = this.armies.find((x) => x.id === armyId && x.owner === cid);
+      if (!army) return { err: 'Ordu yok' };
+      const ids = Array.isArray(unitIds) ? unitIds : [unitIds];
+      const units = ids.map((id) => this.units.find((u) => u.id === id && !u.dead))
+        .filter((u) => u && u.owner === cid && !u.move && u.city !== null && u.army !== army.id);
+      if (!units.length) return { err: 'Orduya eklenecek birlik seçilmedi' };
+      const cities = new Set();
+      if (units.length === 1 && amount !== undefined && amount !== null && Number.isFinite(+amount) && Math.round(amount) < units[0].troops) {
+        const u = units[0], part = U.clamp(Math.round(amount), 1, u.troops);
+        u.troops -= part;
+        const nu = this.newUnit(cid, u.city, part, army.id);
+        nu.weak = u.weak;
+        cities.add(u.city);
+      } else {
+        for (const u of units) { u.army = army.id; cities.add(u.city); }
+      }
+      for (const c of cities) this.mergeCity(c);
+      this.emit({ type: 'sound', name: 'armyJoin', cid });
+      return { ok: true, army };
+    }
+    cmdRemoveUnitFromArmy(cid, unitId, amount) {
+      const u = this.units.find((x) => x.id === unitId && !x.dead && x.owner === cid && !x.move && x.city !== null && x.army !== null);
+      if (!u) return { err: 'Orduda birlik bulunamadı' };
+      if (amount !== undefined && amount !== null && Number.isFinite(+amount) && Math.round(amount) < u.troops) {
+        const part = U.clamp(Math.round(amount), 1, u.troops);
+        u.troops -= part;
+        const nu = this.newUnit(cid, u.city, part, null);
+        nu.weak = u.weak;
+      } else {
+        u.army = null;
+      }
+      this.mergeCity(u.city);
+      return { ok: true };
+    }
     cmdArmyMode(cid, armyId, mode) {
       const a = this.armies.find((x) => x.id === armyId && x.owner === cid);
       if (!a) return { err: 'Ordu yok' };

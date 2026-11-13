@@ -54,6 +54,7 @@
       this.selUnit = null;
       this.amountK = 0;
       this.marking = false;
+      this.markArmyId = null;
       this.marked = new Set();
       this.targeting = null;
       this.setupMode = !opts.resumed && game.phase === 'setup' && !game.player.setupDone;
@@ -263,7 +264,7 @@
         if (t.onCancel) t.onCancel();
         return true;
       }
-      if (this.marking) { this.marking = false; this.marked.clear(); this.barKey = ''; this.updateActionBar(); return true; }
+      if (this.marking) { this.marking = false; this.markArmyId = null; this.marked.clear(); this.barKey = ''; this.updateActionBar(); return true; }
       if (this.selUnit !== null) { this.selectUnit(null); this.updateActionBar(); return true; }
       if (this.menu) { this.openMenu(null); return true; }
       return false;
@@ -292,9 +293,21 @@
       }
       if (this.marking) {
         let u = unit;
-        if (!u && cityId !== null) u = g.idleUnitsAt(cityId).find((x) => x.owner === me);
+        if (this.markArmyId !== null) {
+          const cid = u && u.city !== null ? u.city : cityId;
+          const mine = cid !== null ? g.idleUnitsAt(cid).filter((x) => x.owner === me) : [];
+          if (!u) u = mine.find((x) => x.army !== this.markArmyId) || mine[0];
+          else if (u.army === this.markArmyId) u = mine.find((x) => x.army !== this.markArmyId) || u;
+          if (u && u.owner === me && !u.move && u.army === this.markArmyId) {
+            this.toast('Bu birlik zaten bu orduda', 'info');
+            return;
+          }
+        } else if (!u && cityId !== null) {
+          u = g.idleUnitsAt(cityId).find((x) => x.owner === me);
+        }
         if (u && u.owner === me && !u.move) {
           if (this.marked.has(u.id)) this.marked.delete(u.id); else this.marked.add(u.id);
+          if (this.$('actionBar')) this.updateBarLive();
         }
         return;
       }
@@ -321,11 +334,13 @@
       const g = this.game;
       const bar = this.$('actionBar');
       const sel = this.selectedUnit();
+      const myArmies = g.armies.filter((a) => a.owner === g.playerId);
+      const aSig = myArmies.map((a) => a.id + a.mode).join(',');
       let key = '';
       if (this.setupMode) key = '';
       else if (this.targeting) key = 'target:' + this.targeting.label;
-      else if (this.marking) key = 'mark';
-      else if (sel) key = 'unit:' + sel.id;
+      else if (this.marking) key = 'mark:' + (this.markArmyId || 0) + ':' + aSig;
+      else if (sel) key = 'unit:' + sel.id + ':' + (sel.army || 0) + ':' + aSig;
       if (key !== this.barKey) {
         this.barKey = key;
         bar.classList.toggle('hidden', !key);
@@ -335,13 +350,25 @@
             <div class="bar-row"><b id="pickInfo"></b><button class="btn green" data-bar="pickdone">Tamam</button>${cancelBtn}</div>`;
         } else if (key.startsWith('target')) {
           bar.innerHTML = `<div class="bar-row"><span class="bar-ic">◎</span><span>${esc(this.targeting.label)}</span>${cancelBtn}</div>`;
-        } else if (key === 'mark') {
-          bar.innerHTML = `<div class="bar-row"><span>Orduya katılacak birliklerine tıkla: <b id="markInfo"></b></span></div>
-            <div class="bar-row"><button class="btn red" data-bar="army" data-mode="attack">Taarruz Ordusu Kur</button>
-            <button class="btn blue" data-bar="army" data-mode="defend">Savunma Ordusu Kur</button>${cancelBtn}</div>
-            <small>Taarruz: düşman şehirlerini kendiliğinden işgal eder · Savunma: sınırda kalır, kayıp şehirleri geri alır</small>`;
-        } else if (key.startsWith('unit')) {
+        } else if (key.startsWith('mark:')) {
+          const targetArmy = this.markArmyId ? myArmies.find((a) => a.id === this.markArmyId) : null;
+          if (targetArmy) {
+            bar.innerHTML = `<div class="bar-row"><span><b>${esc(targetArmy.name)}</b> emrine eklenecek birliklerine tıkla: <b id="markInfo"></b></span></div>
+              <div class="bar-row"><button class="btn ${targetArmy.mode === 'attack' ? 'red' : 'blue'}" data-bar="armyadd" data-army="${targetArmy.id}">+ ⚑ ${esc(targetArmy.name)}'na Ekle</button>${cancelBtn}</div>
+              <small>Eklenen birlikler hemen ${esc(targetArmy.name)} emrine girer</small>`;
+          } else {
+            const addBtns = myArmies.map((a) => `<button class="btn sm ${a.mode === 'attack' ? 'red' : 'blue'}" data-bar="armyadd" data-army="${a.id}">+ ${esc(a.name)}'na Ekle</button>`).join('');
+            bar.innerHTML = `<div class="bar-row"><span>Orduya katılacak birliklerine tıkla: <b id="markInfo"></b></span></div>
+              <div class="bar-row"><button class="btn red" data-bar="army" data-mode="attack">Taarruz Ordusu Kur</button>
+              <button class="btn blue" data-bar="army" data-mode="defend">Savunma Ordusu Kur</button>${addBtns}${cancelBtn}</div>
+              <small>Taarruz: düşman şehirlerini kendiliğinden işgal eder · Savunma: sınırda kalır, kayıp şehirleri geri alır</small>`;
+          }
+        } else if (key.startsWith('unit:')) {
           const maxK = Math.max(1, Math.ceil(sel.troops / 1000));
+          const joinBtns = myArmies.filter((a) => a.id !== sel.army)
+            .map((a) => `<button class="btn sm ${a.mode === 'attack' ? 'red' : 'blue'}" data-bar="unitarmy" data-army="${a.id}" title="Seçili miktarı ${esc(a.name)} emrine ekle">+ ⚑ ${esc(a.name)}</button>`).join('');
+          const leaveBtn = sel.army !== null ? '<button class="btn sm" data-bar="unitleave" title="Seçili miktarı ordudan ayır">Ordudan Ayır</button>' : '';
+          const armyRow = (joinBtns || leaveBtn) ? `<div class="bar-row">${joinBtns}${leaveBtn}</div>` : '';
           bar.innerHTML = `<div class="bar-row"><span>Seçili birlik: <b id="selInfo"></b></span>
             <label class="amt">Taşınacak miktar <input type="range" id="amtRange" min="1" max="${maxK}" step="1" value="${Math.min(this.amountK, maxK)}"> <b id="amtVal"></b></label>
             <span class="amt-quick" role="group" aria-label="Hızlı miktar seçimi">
@@ -349,7 +376,7 @@
               <button class="btn sm" data-bar="pct" data-pct="0.5">%50</button>
               <button class="btn sm" data-bar="pct" data-pct="0.75">%75</button>
               <button class="btn sm" data-bar="pct" data-pct="1">Tümü</button>
-            </span>${cancelBtn}</div>
+            </span>${cancelBtn}</div>${armyRow}
             <small>Hedef şehre ${this.mode === 'pc' ? 'tıkla' : 'dokun'}: kendi şehrin = taşı · komşu düşman = saldır</small>`;
           this._pctBtns = [...bar.querySelectorAll('[data-pct]')];
         } else { bar.innerHTML = ''; this._pctBtns = null; }
@@ -362,7 +389,7 @@
     updateBarLive() {
       const g = this.game;
       const sel = this.selectedUnit();
-      if (this.barKey.startsWith('unit') && sel) {
+      if (this.barKey.startsWith('unit:') && sel) {
         const r = this.$('amtRange');
         const maxK = Math.max(1, Math.ceil(sel.troops / 1000));
         if (r && +r.max !== maxK) { r.max = maxK; }
@@ -377,7 +404,7 @@
         }
       } else if (this.barKey.startsWith('target') && this.targeting && this.targeting.info) {
         this._txt('pickInfo', this.targeting.info());
-      } else if (this.barKey === 'mark') {
+      } else if (this.barKey.startsWith('mark:')) {
         let t = 0;
         for (const id of this.marked) { const u = g.units.find((x) => x.id === id && !x.dead); if (u) t += u.troops; else this.marked.delete(id); }
         this._txt('markInfo', `${this.marked.size} birlik · ${fmtK(t)}`);
@@ -409,7 +436,31 @@
         const r = g.cmdCreateArmy(g.playerId, [...this.marked], b.dataset.mode);
         if (r.err) { this.toast(r.err, 'bad'); return; }
         this.toast(`${r.army.name} kuruldu (${b.dataset.mode === 'attack' ? 'Taarruz' : 'Savunma'})`, 'good');
-        this.marking = false; this.marked.clear(); this.barKey = '';
+        this.marking = false; this.markArmyId = null; this.marked.clear(); this.barKey = '';
+        if (this.$('actionBar')) this.updateActionBar();
+        this.lastHtml = ''; if (this.menu === 'military') this.renderPanel();
+      } else if (b.dataset.bar === 'armyadd') {
+        const armyId = +b.dataset.army || this.markArmyId;
+        const r = g.cmdAddUnitsToArmy(g.playerId, armyId, [...this.marked]);
+        if (r.err) { this.toast(r.err, 'bad'); return; }
+        this.toast(`Seçili birlikler ${r.army.name}'na eklendi`, 'good');
+        this.marking = false; this.markArmyId = null; this.marked.clear(); this.barKey = '';
+        if (this.$('actionBar')) this.updateActionBar();
+        this.lastHtml = ''; if (this.menu === 'military') this.renderPanel();
+      } else if (b.dataset.bar === 'unitarmy') {
+        const sel = this.selectedUnit(); if (!sel) return;
+        const amount = Math.min(sel.troops, this.amountK * 1000);
+        const r = g.cmdAddUnitsToArmy(g.playerId, +b.dataset.army, [sel.id], amount >= sel.troops - 1 ? undefined : amount);
+        if (r.err) { this.toast(r.err, 'bad'); return; }
+        this.toast(`${fmtK(amount)} asker ${r.army.name}'na eklendi`, 'good');
+        this.selectUnit(null); this.lastHtml = ''; if (this.menu === 'military') this.renderPanel();
+      } else if (b.dataset.bar === 'unitleave') {
+        const sel = this.selectedUnit(); if (!sel) return;
+        const amount = Math.min(sel.troops, this.amountK * 1000);
+        const r = g.cmdRemoveUnitFromArmy(g.playerId, sel.id, amount >= sel.troops - 1 ? undefined : amount);
+        if (r.err) { this.toast(r.err, 'bad'); return; }
+        this.toast(`${fmtK(amount)} asker ordudan ayrıldı`, 'info');
+        this.selectUnit(null); this.lastHtml = ''; if (this.menu === 'military') this.renderPanel();
       }
     }
 
@@ -831,11 +882,12 @@
           <small class="ar-s">${this.L(() => { const l = us(); const f = l.filter((u) => u.move && (u.move.kind === 'battle' || u.move.kind === 'attack')).length; const n = new Set(l.filter((u) => u.city !== null).map((u) => u.city)).size; return `${n} şehirde${f ? ` · ${f} çatışmada` : ''}`; })}</small>
           <div class="ar-b"><div class="mode2"><button class="${a.mode === 'attack' ? 'on' : ''}" data-act="amode" data-id="${a.id}" data-mode="attack">⚔ Taarruz</button>
             <button class="${a.mode === 'defend' ? 'on' : ''}" data-act="amode" data-id="${a.id}" data-mode="defend">🛡 Savunma</button></div>
+            <button class="btn sm" data-act="aadd" data-id="${a.id}" title="Haritadan birlik seçip bu orduya ekle">+ Birlik</button>
             <button class="btn sm" data-act="afocus" data-id="${a.id}" title="Haritada göster">◎</button>
             <button class="btn sm" data-act="adisband" data-id="${a.id}" title="Ordunu dağıt">✕</button></div></div>`;
       };
       const armySect = `<div class="mcard"><div class="mc-h">${icon('flag')}<b>Ordular</b><button class="btn sm" data-act="mark">+ Ordu Kur</button></div>
-        ${armies.length ? `<div class="army-grid">${armies.map(armyCard).join('')}</div><small class="note">Ordunun bulunduğu şehre gönderdiğin askerler orduya katılır.</small>`
+        ${armies.length ? `<div class="army-grid">${armies.map(armyCard).join('')}</div><small class="note"><b>+ Birlik</b> veya birlik seçiliyken alttaki <b>+ ⚑ Ordu</b> düğmesiyle sonradan birlik ekleyebilirsin; ordunun şehrine giden askerler de katılır.</small>`
           : '<div class="army-empty">Ordular kendi kendine savaşır: <b>Taarruz</b> ordusu düşman şehirlerini işgal eder, <b>Savunma</b> ordusu sınırlarını korur ve kaybedilen şehirleri geri alır. <b>+ Ordu Kur</b>\'a bas, birliklerini haritada işaretle.</div>'}</div>`;
       const tap = this.mode === 'pc' ? 'tıkla' : 'dokun';
       return `<div class="mil scroll">${warn}${hero}${prod}${equip}${ideoSect}${armySect}
@@ -1001,7 +1053,13 @@
           break;
         }
         case 'mark':
-          this.selectUnit(null); this.targeting = null; this.marking = true; this.marked.clear(); this.barKey = '';
+          this.selectUnit(null); this.targeting = null; this.marking = true; this.markArmyId = null; this.marked.clear(); this.barKey = '';
+          if (this.$('actionBar')) this.updateActionBar();
+          if (this.mode === 'mobile') this.openMenu(null);
+          break;
+        case 'aadd':
+          this.selectUnit(null); this.targeting = null; this.marking = true; this.markArmyId = id; this.marked.clear(); this.barKey = '';
+          if (this.$('actionBar')) this.updateActionBar();
           if (this.mode === 'mobile') this.openMenu(null);
           break;
         case 'amode': res(g.cmdArmyMode(me, id, b.dataset.mode)); break;
@@ -1408,7 +1466,7 @@
     <section><h4>🤝 Diplomasi</h4><p>Talep, destek ve takas teklif et; ittifak kur ya da bir ittifaka katıl; barış teklif et ya da teslim ol.
       İlişkiler tekliflerin kabul edilme şansını etkiler. Müttefiklerini savaşa çağırabilirsin.</p></section>
     <section><h4>🎖 Askeri yönetim ve mağaza</h4><p>Asker üret (+1k = 1₺), <b>Sınırlara dağıt</b> ile yeni askerleri cepheye yolla, saldırı/savunma geliştir,
-      ideolojine özel geliştirmeleri al, ordu kur (ordunun şehrine gelen askerler orduya katılır). Mağazada fabrika, blitzkrieg, uçak, füze, isyan ve savunmalar var.</p></section>
+      ideolojine özel geliştirmeleri al, ordu kur. Mevcut orduya <b>+ Birlik</b> düğmesiyle, birlik seçiliyken alttaki ordu düğmeleriyle veya ordunun şehrine asker göndererek sonradan birlik ekleyebilirsin. Mağazada fabrika, blitzkrieg, uçak, füze, isyan ve savunmalar var.</p></section>
     <section><h4>🗺 Haritalar</h4><p>Kıta, Pangea, Takımadalar, İç Deniz, İkiz Kıtalar ya da Rastgele. Takımadalarda ve ikiz kıtalarda
       dar kara köprüleri kilit noktalardır; köprüyü tutan, karşı kıyıya geçişi tutar.</p></section>
     <section><h4>🌐 Çevrimiçi</h4><p>Giriş ekranında <b>Oda Kur</b> ile 5 harfli bir kod al, arkadaşların kodla katılsın. Harita oyuncu sayısına göre oluşur.
