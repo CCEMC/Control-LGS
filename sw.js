@@ -1,5 +1,5 @@
 // Servis çalışanı: oyunu çevrimdışı çalıştırır. Dosyaları değiştirince VERSION'ı arttır.
-const VERSION = 'hc-v11'; // js/net.js içindeki BUILD ile aynı olmalı (çevrimiçi sürüm kontrolü)
+const VERSION = 'clgs-v12'; // js/net.js içindeki BUILD ile aynı olmalı (çevrimiçi sürüm kontrolü)
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/style.css',
   './js/util.js', './js/mapgen.js', './js/game.js', './js/bot.js', './js/render.js', './js/audio.js', './js/ui.js', './js/net.js', './js/main.js',

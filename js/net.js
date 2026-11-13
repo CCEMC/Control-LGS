@@ -5,9 +5,9 @@
 (function () {
   'use strict';
   const G = window.G;
-  const BUILD = 'hc-v11'; // host ve istemci aynı sürümü çalıştırmalı (harita aynı tohumdan aynı üretilsin)
+  const BUILD = 'clgs-v12'; // host ve istemci aynı sürümü çalıştırmalı (harita aynı tohumdan aynı üretilsin)
   const PROTO = 1;
-  const PREFIX = 'hukumdarlar-cagi-';
+  const PREFIX = 'control-lgs-';
   const ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const MAX_PLAYERS = 9;
   const SNAP_MS = 200;

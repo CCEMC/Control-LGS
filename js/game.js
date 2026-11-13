@@ -116,6 +116,8 @@
           setupDone: false, bot: { eco: 1 + this.rnd() * 2, mil: 1 + this.rnd(), dip: 4 + this.rnd() * 4 },
         });
       }
+      // oyun sonu ekranı ve sıralama için istatistikler
+      this.stats = this.countries.map(() => ({ captured: 0, lost: 0, destroyed: 0, peakCities: 0, peakTroops: 0, deadAt: null, deadBy: null }));
       this.rel = [];
       for (let a = 0; a < 10; a++) { this.rel.push(new Array(10).fill(0)); }
       for (let a = 0; a < 9; a++) for (let b = a + 1; b < 9; b++) { const v = Math.round((this.rnd() - 0.5) * 30); this.rel[a][b] = this.rel[b][a] = v; }
@@ -1081,6 +1083,7 @@
       u.move = null; u.city = city.id;
       const wasCapital = prev !== CFG.REBEL && this.countries[prev].capital === city.id;
       if (prev !== u.owner) {
+        if (this.stats) { this.stats[u.owner].captured++; this.stats[prev].lost++; }
         this.capture(city, u.owner);
         if (u.owner !== CFG.REBEL) {
           u.troops += 1000 * this.iu(u.owner, 'militia'); // Komünizm: Halk Milisi
@@ -1129,6 +1132,11 @@
     eliminate(cid, by, capitalCity) {
       const c = this.countries[cid];
       if (!c.alive) return;
+      if (this.stats) {
+        const s = this.stats[cid];
+        s.deadAt = this.time; s.deadBy = by === undefined ? null : by;
+        if (by !== undefined && by !== CFG.REBEL && by !== cid) this.stats[by].destroyed++;
+      }
       let loot = 0;
       if (capitalCity) {
         if (by !== undefined && by !== CFG.REBEL) {
@@ -1177,6 +1185,19 @@
       const T = this.time;
       this.refreshSupply();
       this.supplyWarn(dt);
+      // saniyede bir: en yüksek şehir/asker sayıları (oyun sonu istatistikleri)
+      this.statTimer = (this.statTimer || 0) + dt;
+      if (this.statTimer >= 1 && this.stats) {
+        this.statTimer = 0;
+        const nc = new Array(10).fill(0);
+        for (const ci of this.cities) nc[ci.owner]++;
+        for (const c of this.countries) {
+          if (!c.alive || c.isRebel) continue;
+          const s = this.stats[c.id];
+          s.peakCities = Math.max(s.peakCities, nc[c.id]);
+          s.peakTroops = Math.max(s.peakTroops, Math.round(this.totalTroops(c.id)));
+        }
+      }
 
       for (const c of this.countries) {
         if (!c.alive || c.isRebel) continue;
@@ -1405,7 +1426,7 @@
         wars: [...this.wars.values()],
         alliances: this.alliances, proposals: this.proposals,
         joinGroups: Object.fromEntries(Object.entries(this.joinGroups).map(([k, j]) => [k, { applicant: j.applicant, allianceId: j.allianceId, pending: [...j.pending] }])),
-        armies: this.armies, projectiles: this.projectiles, rel: this.rel,
+        armies: this.armies, projectiles: this.projectiles, rel: this.rel, stats: this.stats,
       };
     }
     static restore(d) {
@@ -1424,6 +1445,7 @@
       g.units = d.units;
       g.wars = new Map(d.wars.map((w) => [g.warKey(w.a, w.b), w]));
       g.alliances = d.alliances; g.proposals = d.proposals; g.armies = d.armies; g.projectiles = d.projectiles; g.rel = d.rel;
+      if (Array.isArray(d.stats)) g.stats = d.stats;
       g.joinGroups = Object.fromEntries(Object.entries(d.joinGroups || {}).map(([k, j]) => [k, { ...j, pending: new Set(j.pending) }]));
       g.version++;
       g.refreshSupply();
@@ -1464,6 +1486,7 @@
       this.units = d.units;
       this.wars = new Map(d.wars.map((w) => [this.warKey(w.a, w.b), w]));
       this.alliances = d.alliances; this.proposals = d.proposals; this.armies = d.armies; this.projectiles = d.projectiles; this.rel = d.rel;
+      if (Array.isArray(d.stats)) this.stats = d.stats;
       this.joinGroups = Object.fromEntries(Object.entries(d.joinGroups || {}).map(([k, j]) => [k, { ...j, pending: new Set(j.pending) }]));
       // sahiplik/ittifak değiştiyse harita katmanı yeniden çizilsin
       if (d.version !== this.hostVersion) { this.hostVersion = d.version; this.version++; }

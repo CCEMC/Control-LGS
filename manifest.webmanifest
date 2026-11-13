@@ -1,7 +1,7 @@
 {
-  "name": "Hükümdarlar Çağı",
-  "short_name": "Hükümdarlar",
-  "description": "Eski harita temalı strateji: dokuz devlet, tek kıta. Diplomasi, ittifak ve savaş.",
+  "name": "Control-LGS",
+  "short_name": "Control-LGS",
+  "description": "Control-LGS: eski harita temalı strateji. Diplomasi, ittifak ve savaş; tek başına ya da arkadaşlarınla çevrimiçi.",
   "lang": "tr",
   "id": "./",
   "start_url": "./?app=1",

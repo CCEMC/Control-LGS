@@ -407,11 +407,12 @@
         const body = this.$('panelBody');
         const keep = {};
         body.querySelectorAll('select[id]').forEach((s) => (keep[s.id] = s.value));
-        const scroll = body.querySelector('.scroll');
-        const st = scroll ? scroll.scrollTop : 0;
+        // tüm kaydırılabilir alanların konumu korunur (diplomasi: ülke listesi + ülke kartı ayrı kayar)
+        const SCR = '.scroll, .diplo';
+        const tops = [...body.querySelectorAll(SCR)].map((s) => [s.scrollTop, s.scrollLeft]);
         body.innerHTML = html;
         for (const id in keep) { const s = document.getElementById(id); if (s && [...s.options].some((o) => o.value === keep[id])) s.value = keep[id]; }
-        const sc2 = body.querySelector('.scroll'); if (sc2) sc2.scrollTop = st;
+        body.querySelectorAll(SCR).forEach((s, i) => { if (tops[i]) { s.scrollTop = tops[i][0]; s.scrollLeft = tops[i][1]; } });
         this.lastHtml = html;
       }
       this.updateLive();
@@ -444,59 +445,107 @@
 
     // ---------- menüler (v2: sade, tek bakışta okunur) ----------
     stat(label, valueHtml) { return `<div class="stat"><span>${label}</span><b>${valueHtml}</b></div>`; }
+    relWord(rel) { return rel > 40 ? 'dostane' : rel > 10 ? 'iyi' : rel > -10 ? 'nötr' : rel > -40 ? 'gergin' : 'düşmanca'; }
+    soft(c, a) { const p = c.pal; return `hsla(${p.h},${p.s}%,${p.l}%,${a})`; }
+    seal(c, cls) { return `<span class="seal ${cls || ''}" style="--c:${c.color}">${esc((c.name || '?')[0])}</span>`; }
 
+    // ---------- diplomasi (v3): ülke listesi + seçili ülke kartı ----------
     htmlDiplomacy() {
       const g = this.game, me = g.playerId, P = g.player;
-      const list = g.countries.filter((c) => !c.isRebel && !c.isPlayer && !c.absent).map((c) => {
+      const rank = (c) => (!c.alive ? 4 : g.atWar(me, c.id) ? 0 : g.isAlly(me, c.id) ? 1 : 2);
+      const others = g.countries.filter((c) => !c.isRebel && !c.isPlayer && !c.absent)
+        .sort((a, b) => rank(a) - rank(b) || g.rel[me][b.id] - g.rel[me][a.id] || a.id - b.id);
+      if (!others.some((c) => c.id === this.diploSel)) this.diploSel = others.length ? others[0].id : null;
+      const nbrs = new Set(g.neighborsOfCountry(me));
+      const human = (c) => (g.mp && c.isHuman ? '<i class="hm" title="Gerçek oyuncu">👤</i>' : '');
+      const list = others.map((c) => {
         const st = c.alive ? this.relStatus(me, c.id) : { t: 'Yıkıldı', c: 'dead' };
-        return `<li data-act="dsel" data-id="${c.id}" class="${this.diploSel === c.id ? 'sel' : ''} ${c.alive ? '' : 'dead'}">
-          <span class="sw" style="background:${c.color}"></span><span class="nm">${esc(c.name)}</span><span class="chip ${st.c}">${st.t}</span></li>`;
+        const sub = !c.alive ? 'yıkıldı' : st.c === 'war' ? '⚔ savaşta' : st.c === 'ally' ? '🤝 müttefik' : this.relWord(g.rel[me][c.id]);
+        return `<li data-act="dsel" data-id="${c.id}" class="${this.diploSel === c.id ? 'sel' : ''} ${st.c}">${this.seal(c)}
+          <span class="nm"><b>${esc(c.name)}${human(c)}</b><small>${sub}${c.alive && nbrs.has(c.id) ? ' · komşu' : ''}</small></span></li>`;
       }).join('');
-      let info = '<div class="empty">Bir ülke seç</div>';
+      let info = '<div class="empty">Diplomasi kuracak ülke yok.</div>';
       const t = this.diploSel !== null ? g.countries[this.diploSel] : null;
       if (t) {
         const id = t.id;
         const al = g.allianceOf(id), myAl = g.allianceOf(me);
         const st = t.alive ? this.relStatus(me, id) : { t: 'Yıkıldı', c: 'dead' };
         const rel = g.rel[me][id];
-        const relWord = rel > 40 ? 'dostane' : rel > 10 ? 'iyi' : rel > -10 ? 'nötr' : rel > -40 ? 'gergin' : 'düşmanca';
         const war = g.atWar(me, id), ally = g.isAlly(me, id);
         const B = (act, label, opts) => {
           opts = opts || {};
           return `<button class="btn ${opts.cls || ''}" data-act="${act}" data-id="${id}" ${opts.dis ? 'disabled' : ''} title="${esc(opts.title || '')}">${label}</button>`;
         };
-        let sections = '';
-        if (t.alive) {
-          const deals = B('demand', 'Talep', { dis: war, title: 'Karşı taraftan asker, toprak veya para iste' })
-            + B('support', 'Destek', { dis: war, title: 'Asker, toprak veya para gönder' })
-            + B('trade', 'Takas', { dis: war, title: 'Hem ver hem al' });
+        const tags = [`<span class="chip ${st.c}">${st.t}</span>`];
+        if (t.alive) tags.push(`<span class="tag">${esc(g.ideo(id).name)}</span>`);
+        if (al) tags.push(`<span class="tag al">⚑ ${esc(al.name)}</span>`);
+        if (g.mp && t.isHuman) tags.push(`<span class="tag">👤 Oyuncu${t.isBot ? ' (bağlantı yok)' : ''}</span>`);
+        if (t.alive && nbrs.has(id)) tags.push('<span class="tag">Sınır komşusu</span>');
+        const head = `<div class="dp-head" style="background:linear-gradient(100deg, ${this.soft(t, 0.34)}, rgba(255,250,235,.2) 75%)">
+          ${this.seal(t, 'big')}<div class="dp-title"><b>${esc(t.name)}</b><div class="tags">${tags.join('')}</div></div>
+          ${t.alive && t.capital >= 0 ? `<button class="btn sm" data-act="dfocus" data-id="${id}" title="Başkentini haritada göster">◎ Harita</button>` : ''}</div>`;
+        let body;
+        if (!t.alive) {
+          const s = g.stats && g.stats[id];
+          const by = s && s.deadBy !== null && s.deadBy !== undefined ? g.countries[s.deadBy] : null;
+          body = `<div class="dp-dead">☠ Bu devlet ${s && s.deadAt !== null ? fmtTime(s.deadAt) + ' anında ' : ''}yıkıldı${by ? `, <b>${esc(by.name)}</b> tarafından` : ''}.
+            <small>Başkenti düşen devlet çöker; kalan şehirleri isyancılara geçer.</small></div>`;
+        } else {
+          // ilişki ölçeği (-100 … +100)
+          const relm = `<div class="relm"><div class="relm-h"><span>İlişki</span><b>${rel > 0 ? '+' : ''}${rel} · ${this.relWord(rel)}</b></div>
+            <div class="relm-bar"><i style="left:${(rel + 100) / 2}%"></i></div><div class="relm-s"><span>düşman</span><span>nötr</span><span>dost</span></div></div>`;
+          // güç karşılaştırması: sen ⟷ onlar
+          const vs = (label, mine, theirs, fmt) => `<div class="vs"><div class="vs-h"><span>${this.L(() => fmt(mine()))}</span><small>${label}</small><span>${this.L(() => fmt(theirs()))}</span></div>
+            <div class="vs-bar" style="--a:${P.color};--b:${t.color}">${this.LW(() => { const a = mine(), b = theirs(); return a + b > 0 ? (a / (a + b)) * 100 : 50; })}</div></div>`;
+          const cnt = (k) => () => { let n = 0; for (const c of g.cities) if (c.owner === k) n++; return n; };
+          const power = `<div class="dcard"><h5>Güç dengesi <small>— sen ⟷ ${esc(t.name)}</small></h5>
+            ${vs('Asker', () => g.totalTroops(me), () => g.totalTroops(id), fmtK)}
+            ${vs('Şehir', cnt(me), cnt(id), String)}
+            ${vs('Fabrika', () => g.factoriesOf(me), () => g.factoriesOf(id), String)}
+            ${vs('Hazine', () => P.money, () => t.money, fmtMoney)}</div>`;
+          // bekleyen teklifler
+          const pend = g.proposals.filter((p) => (p.from === me && p.to === id) || (p.from === id && p.to === me));
+          const pendHtml = pend.length ? `<ul class="pend">${pend.map((p) => `<li class="${p.from === me ? 'out' : 'in'}" data-pid="${p.id}">
+            <span>${p.from === me ? '📤 Gönderdin' : '📥 Gelen'}: <b>${esc(G.PROPOSAL_NAMES[p.type])}</b></span>
+            <small>${this.L(() => Math.max(0, Math.ceil(p.expires - g.time)) + ' sn')}</small></li>`).join('')}</ul>` : '';
+          // eylemler
+          const deals = `<div class="dcard"><h5>Anlaşmalar</h5><div class="actions">
+              ${B('demand', '📜 Talep', { dis: war, title: 'Karşı taraftan asker, şehir veya para iste' })}
+              ${B('support', '🎁 Destek', { dis: war, title: 'Asker, şehir veya para gönder' })}
+              ${B('trade', '⇄ Takas', { dis: war, title: 'Hem ver hem al' })}</div>
+            <p class="note">${war ? 'Savaşırken anlaşma yapılamaz.' : 'Kabul edilip edilmemesi ilişkinize ve teklifin değerine bağlıdır.'}</p></div>`;
           const ws = g.warRightState(me, id);
           const wrPrice = g.price(me, 'warRight');
           let conflict;
           if (war) {
-            conflict = B('peace', 'Barış Yap', { cls: 'green', dis: !!g.pendingProposal(me, id, 'peace') })
-              + B('surrender', '🏳︎ Teslim Ol', { cls: 'white', title: 'Savaş hemen biter, hazinenin yarısını tazminat ödersin' })
-              + (myAl ? B('callallies', 'Müttefikleri Çağır', { cls: 'red', title: 'İttifak üyelerini bu savaşa çağır' }) : '');
-          } else if (ally) conflict = '<span class="muted">Müttefike savaş açılamaz.</span>';
-          else if (ws.state === 'pending') conflict = `<button class="btn" disabled>Hazırlanıyor… ${this.L(() => Math.ceil(g.warRightState(me, id).left || 0) + ' sn')}</button>`;
-          else if (ws.state === 'ready') conflict = B('declare', '⚔︎ Savaş İlan Et', { cls: 'red' });
-          else conflict = B('warright', `Savaş Hakkı Al · ${fmtMoney(wrPrice)}`, { dis: P.money < wrPrice, title: 'Ödedikten 20 sn sonra savaş ilan edebilirsin' });
+            const w = g.wars.get(g.warKey(me, id));
+            const peaceP = !!g.pendingProposal(me, id, 'peace');
+            conflict = `<p class="war-line">⚔ Savaş sürüyor · ${this.L(() => fmtTime(g.time - (w ? w.since : g.time)))}
+                · cephede ${this.L(() => String(g.units.filter((u) => !u.dead && u.move && u.move.kind === 'battle' && ((u.owner === me && g.cities[u.move.to].owner === id) || (u.owner === id && g.cities[u.move.to].owner === me))).length))} çatışma</p>
+              <div class="actions">${B('peace', peaceP ? '🕊 Barış teklif edildi' : '🕊 Barış Teklif Et', { cls: 'green', dis: peaceP })}
+              ${B('surrender', '🏳 Teslim Ol', { cls: 'white', title: 'Savaş hemen biter, hazinenin yarısını tazminat ödersin' })}
+              ${myAl ? B('callallies', '📯 Müttefikleri Çağır', { cls: 'red', title: 'İttifak üyelerini bu savaşa çağır' }) : ''}</div>`;
+          } else if (ally) conflict = '<p class="muted">Müttefikine savaş açamazsın. Önce ittifaktan ayrılmalısın.</p>';
+          else if (ws.state === 'pending') {
+            conflict = `<div class="wr"><span>Savaş hakkı hazırlanıyor</span><div class="bar">${this.LW(() => 100 - ((g.warRightState(me, id).left || 0) / G.CFG.warRightDelay) * 100)}</div>
+              <b>${this.L(() => Math.ceil(g.warRightState(me, id).left || 0) + ' sn')}</b></div>`;
+          } else if (ws.state === 'ready') conflict = `<div class="actions">${B('declare', '⚔ Savaş İlan Et', { cls: 'red' })}</div><p class="note">Savaş hakkın hazır. İlan ettiğinde bütün dünya duyar.</p>`;
+          else conflict = `<div class="actions">${B('warright', `Savaş Hakkı Al · ${fmtMoney(wrPrice)}`, { dis: P.money < wrPrice, title: 'Ödedikten 20 sn sonra savaş ilan edebilirsin' })}</div>
+              <p class="note">Hak alındığında ${esc(t.name)} bunu öğrenir ve ilişkiniz bozulur.</p>`;
           const alPrice = g.price(me, 'alliance'), lvPrice = g.price(me, 'leave');
           let pact;
-          if (myAl) pact = ally ? B('leave', `İttifaktan Ayrıl · ${fmtMoney(lvPrice)}`, { dis: P.money < lvPrice }) : '<span class="muted">Zaten bir ittifaktasın.</span>';
-          else if (al) pact = B('alliance', `Katılma Talebi · ${fmtMoney(alPrice)}`, { dis: war || P.money < alPrice, title: `${al.name}: tüm üyeler onaylamalı` });
-          else pact = B('alliance', `İttifak Teklif Et · ${fmtMoney(alPrice)}`, { dis: war || !!g.pendingProposal(me, id, 'alliance') || P.money < alPrice });
-          sections = `<div class="sect"><h5>Teklif</h5><div class="actions">${deals}</div>${war ? '<p class="note">Savaşırken teklif yapılamaz.</p>' : ''}</div>
-            <div class="sect"><h5>Savaş</h5><div class="actions">${conflict}</div></div>
-            <div class="sect"><h5>İttifak</h5><div class="actions">${pact}</div></div>`;
+          if (myAl) pact = ally ? B('leave', `İttifaktan Ayrıl · ${fmtMoney(lvPrice)}`, { dis: P.money < lvPrice }) : `<span class="muted">Zaten ${esc(myAl.name)} ittifakındasın.</span>`;
+          else if (al) pact = B('alliance', `⚑ Katılma Talebi · ${fmtMoney(alPrice)}`, { dis: war || P.money < alPrice, title: `${al.name}: tüm üyeler onaylamalı` });
+          else pact = B('alliance', `🤝 İttifak Teklif Et · ${fmtMoney(alPrice)}`, { dis: war || !!g.pendingProposal(me, id, 'alliance') || P.money < alPrice });
+          body = `${relm}${pendHtml}
+            <div class="dcards">
+              <div class="dcard ${war ? 'war' : ''}"><h5>Savaş ve barış</h5>${conflict}</div>
+              ${deals}
+              <div class="dcard"><h5>İttifak</h5><div class="actions">${pact}</div></div>
+              ${power}
+            </div>`;
         }
-        const sub = [t.alive ? esc(g.ideo(id).name) : null, al ? 'İttifak: ' + esc(al.name) : null, t.alive ? `İlişki ${rel > 0 ? '+' : ''}${rel} (${relWord})` : null].filter(Boolean).join(' · ');
-        info = `<div class="cinfo">
-          <div class="ch"><span class="sw big" style="background:${t.color}"></span><b>${esc(t.name)}</b><span class="chip ${st.c}">${st.t}</span></div>
-          <div class="subl">${sub}</div>
-          <div class="stats4">${this.stat('Para', this.L(() => fmtMoney(t.money)))}${this.stat('Asker', this.L(() => fmtK(g.totalTroops(id))))}${this.stat('Fabrika', this.L(() => String(g.factoriesOf(id))))}${this.stat('Şehir', this.L(() => String(g.citiesOf(id).length)))}</div>
-          ${sections}
-        </div>`;
+        info = `<div class="cinfo">${head}${body}</div>`;
       }
       return `<div class="diplo"><ul class="clist scroll">${list}</ul><div class="cwrap scroll">${info}</div></div>`;
     }
@@ -555,20 +604,45 @@
       </div>`;
     }
 
+    // ---------- ittifaklar (v3): güç sıralaması, ittifaklar, savaşlar ----------
     htmlAlliances() {
       const g = this.game, me = g.playerId;
-      const als = g.alliances.map((al) => {
-        const p = G.PALETTE[al.colorIdx];
-        const members = al.members.map((m) => `<span class="rchip"><span class="sw" style="background:${g.countries[m].color}"></span>${esc(g.countries[m].name)}</span>`).join('');
-        const mine = al.members.includes(me);
-        const btn = mine ? `<button class="btn sm" data-act="leave">Ayrıl · ${fmtMoney(g.price(me, 'leave'))}</button>`
-          : g.countries[me].allianceId === null ? `<button class="btn sm" data-act="join" data-id="${al.id}">Katıl · ${fmtMoney(g.price(me, 'alliance'))}</button>` : '';
-        return `<li class="${mine ? 'mine' : ''}"><div class="al-h"><span class="sw big" style="background:${U.hsl(p.h, p.s, p.l)}"></span><b>${esc(al.name)}</b>
-          <small>${al.members.length} üye</small>${btn}</div><div class="rels">${members}</div></li>`;
+      const cityCount = (k) => { let n = 0; for (const c of g.cities) if (c.owner === k) n++; return n; };
+      const rows = g.countries.filter((c) => !c.isRebel && !c.absent)
+        .map((c) => ({ c, n: cityCount(c.id) }))
+        .sort((a, b) => (b.c.alive - a.c.alive) || b.n - a.n || a.c.id - b.c.id);
+      const maxN = Math.max(1, ...rows.map((r) => r.n));
+      const ranking = rows.map((r, i) => {
+        const c = r.c, st = c.isPlayer ? { c: 'me' } : c.alive ? this.relStatus(me, c.id) : { c: 'dead' };
+        return `<li class="${st.c}"><span class="rk">${c.alive ? i + 1 : '☠'}</span>${this.seal(c, 'sm')}
+          <span class="rk-n"><b>${esc(c.name)}${c.isPlayer ? ' <small>(sen)</small>' : ''}</b>
+          <span class="rk-bar"><i style="width:${(r.n / maxN) * 100}%;background:${c.color}"></i></span></span>
+          <small class="rk-v">${c.alive ? `${r.n} şehir · ${this.L(() => fmtK(g.totalTroops(c.id)))}` : 'yıkıldı'}</small></li>`;
       }).join('');
-      const wars = [...g.wars.values()].map((w) => `<li class="${w.a === me || w.b === me ? 'mine' : ''}"><span class="sw" style="background:${g.countries[w.a].color}"></span>${esc(g.countries[w.a].name)} <b>⚔︎</b>
-        <span class="sw" style="background:${g.countries[w.b].color}"></span>${esc(g.countries[w.b].name)} <small>${fmtTime(g.time - w.since)}</small></li>`).join('');
-      return `<div class="alls scroll"><h5>İttifaklar</h5><ul class="allist">${als || '<li class="empty">Aktif ittifak yok.</li>'}</ul>
+      const myAlId = g.countries[me].allianceId;
+      const als = g.alliances.slice().sort((a, b) => (b.id === myAlId) - (a.id === myAlId)).map((al) => {
+        const p = G.PALETTE[al.colorIdx];
+        const mine = al.id === myAlId;
+        const members = al.members.map((m) => {
+          const c = g.countries[m];
+          const st = m === me ? 'me' : g.atWar(me, m) ? 'war' : '';
+          return `<span class="rchip ${st}">${this.seal(c, 'xs')}${esc(c.name)}${m === me ? ' (sen)' : ''}</span>`;
+        }).join('');
+        const btn = mine ? `<button class="btn sm" data-act="leave">Ayrıl · ${fmtMoney(g.price(me, 'leave'))}</button>`
+          : myAlId === null ? `<button class="btn sm" data-act="join" data-id="${al.id}" ${al.members.some((m) => g.atWar(me, m)) ? 'disabled title="Üyelerinden biriyle savaştasın"' : ''}>Katıl · ${fmtMoney(g.price(me, 'alliance'))}</button>` : '';
+        return `<li class="${mine ? 'mine' : ''}" style="--c:${U.hsl(p.h, p.s, p.l)}"><div class="al-h"><b>⚑ ${esc(al.name)}</b>
+          <small>${al.members.length} üye · ${this.L(() => fmtK(al.members.reduce((s, m) => s + g.totalTroops(m), 0)))} asker · ${al.members.reduce((s, m) => s + cityCount(m), 0)} şehir</small>${btn}</div>
+          <div class="rels">${members}</div></li>`;
+      }).join('');
+      const wars = [...g.wars.values()].sort((a, b) => ((b.a === me || b.b === me) - (a.a === me || a.b === me))).map((w) => {
+        const A = g.countries[w.a], Bc = g.countries[w.b];
+        return `<li class="${w.a === me || w.b === me ? 'mine' : ''}"><span class="side">${this.seal(A, 'xs')}${esc(A.name)} <small>${cityCount(w.a)}</small></span>
+          <b class="vsx">⚔</b><span class="side">${this.seal(Bc, 'xs')}${esc(Bc.name)} <small>${cityCount(w.b)}</small></span>
+          <small class="dur">${this.L(() => fmtTime(g.time - w.since))}</small></li>`;
+      }).join('');
+      return `<div class="alls scroll">
+        <h5>Güç sıralaması <small>(şehir sayısına göre)</small></h5><ol class="rank">${ranking}</ol>
+        <h5>İttifaklar</h5><ul class="allist">${als || '<li class="empty">Henüz ittifak yok. Diplomasi menüsünden bir ülkeye ittifak teklif edebilirsin.</li>'}</ul>
         <h5>Savaşlar</h5><ul class="warlist">${wars || '<li class="empty">Kıtada barış var.</li>'}</ul></div>`;
     }
 
@@ -608,6 +682,16 @@
       const res = (r, okMsg) => { if (r && r.err) this.toast(r.err, 'bad'); else if (okMsg) this.toast(okMsg, 'good'); this.lastHtml = ''; this.renderPanel(); };
       switch (b.dataset.act) {
         case 'dsel': this.diploSel = id; this.lastHtml = ''; this.renderPanel(); break;
+        case 'dfocus': {
+          const c = g.countries[id];
+          if (c && c.capital >= 0 && this.renderer) {
+            const k = g.cities[c.capital];
+            this.renderer.cam.x = k.x; this.renderer.cam.y = k.y;
+            this.renderer.fx.push({ kind: 'capture', x: k.x, y: k.y, t0: performance.now(), dur: 1400 });
+            if (this.mode === 'mobile') this.openMenu(null);
+          }
+          break;
+        }
         case 'demand': case 'support': case 'trade': this.openBundleDialog(b.dataset.act, id); break;
         case 'warright': res(g.cmdBuyWarRight(me, id), `Savaş ilan hakkı alındı: 20 sn sonra ${g.countries[id].name} ülkesine savaş ilan edebilirsin.`); break;
         case 'declare': res(g.cmdDeclareWar(me, id)); break;
@@ -866,32 +950,148 @@
         this.closeDialog();
       };
     }
-    closeDialog() { const l = this.$('dialog'); l.classList.add('hidden'); l.innerHTML = ''; document.body.classList.remove('dialog-open'); }
+    closeDialog() {
+      const l = this.$('dialog'); l.classList.add('hidden'); l.innerHTML = ''; document.body.classList.remove('dialog-open');
+      this.paused = false; // oyun menüsü / yardım kapanınca (tek oyunculuda) oyun devam eder
+    }
     dialogOpen() { return !this.$('dialog').classList.contains('hidden'); }
 
-    showEnd(win) {
+    // ---------- oyun menüsü (Esc / ☰) ----------
+    openGameMenu() {
       const g = this.game;
+      if (this.dialogOpen()) return;
+      const sp = !g.mp;
+      const body = `<div class="gm">
+          ${sp ? '<p class="gm-paused">Oyun duraklatıldı. Zaman akmıyor.</p>' : `<p class="note">Çevrimiçi oyun duraklatılamaz${this.netCode ? ` · Oda <b>${esc(this.netCode)}</b>` : ''}.</p>`}
+          <button class="btn big green" data-gm="resume">▶ Devam Et</button>
+          <button class="btn" data-gm="sound">${G.Audio && G.Audio.muted ? '🔇 Ses kapalı — aç' : '🔊 Ses açık — kapat'}</button>
+          <button class="btn" data-gm="help">📖 Nasıl Oynanır</button>
+          <button class="btn red" data-gm="menu">🏠 Ana Menüye Dön</button>
+          <p class="gm-info">${esc(g.player.name)} · ${fmtTime(g.time)} · Control-LGS ${G.VERSION_LABEL}</p></div>`;
+      this.dialog(sp ? '⏸ Duraklatıldı' : '☰ Oyun Menüsü', body, [], false, (e) => {
+        const b = e.target.closest('[data-gm]');
+        if (!b) return false;
+        const a = b.dataset.gm;
+        if (a === 'resume') this.closeDialog();
+        else if (a === 'sound') { if (this.onToggleSound) this.onToggleSound(); this.closeDialog(); this.openGameMenu(); }
+        else if (a === 'help') { this.closeDialog(); this.openHelp(true); }
+        else if (a === 'menu') this.confirmMainMenu();
+        return true;
+      });
+      this.paused = sp;
+    }
+    openHelp(back) {
+      const sp = !this.game.mp;
+      this.dialog('📖 Nasıl Oynanır', G.HELP_HTML, back ? [{ label: '◀ Menüye Dön', fn: () => { setTimeout(() => this.openGameMenu(), 0); } }, { label: 'Tamam', cls: 'green' }] : [{ label: 'Tamam', cls: 'green' }], true);
+      this.paused = sp;
+    }
+    confirmMainMenu() {
+      const g = this.game;
+      const text = !g.mp ? '<p>Oyunun kaydedilir; giriş ekranında <b>Kaldığın Yerden Devam Et</b> ile geri dönebilirsin.</p>'
+        : g.mp === 'host' ? '<p><b>Oda senin cihazında çalışıyor.</b> Çıkarsan oyun herkes için biter.</p>'
+          : '<p>Odadan çıkarsın; ülkeni bot yönetir. Aynı adla yeniden katılırsan kaldığın yerden devam edersin.</p>';
+      this.closeDialog();
+      this.dialog('🏠 Ana menüye dön?', text, [{ label: 'Ana Menü', cls: 'red', fn: () => { if (this.onMainMenu) this.onMainMenu(); return false; } }, { label: 'Vazgeç' }]);
+      this.paused = !g.mp;
+    }
+
+    // ---------- oyun sonu: zafer / yenilgi ----------
+    showEnd(win) {
+      const g = this.game, me = g.playerId, P = g.player;
+      const s = (g.stats && g.stats[me]) || {};
       const el = this.$('endScreen');
-      el.classList.remove('hidden');
+      this.closeDialog();
+      document.body.classList.remove('end-win', 'end-lose');
+      document.body.classList.add(win ? 'end-win' : 'end-lose');
       // Çevrimiçi: oyun diğerleri için sürebilir. Odayı kuran cihaz kapanırsa oyun herkes için biter.
       const live = g.mp && !g.over;
       const note = !live ? '' : g.mp === 'host'
         ? '<p class="note"><b>Oda senin cihazında çalışıyor.</b> Diğer hükümdarlar oynamaya devam ediyor; bu sekmeyi kapatırsan oyun herkes için biter.</p>'
         : '<p class="note">Diğer hükümdarlar oynamaya devam ediyor. İstersen izleyebilirsin.</p>';
-      el.innerHTML = `<div class="end frame"><h1>${win ? 'ZAFER' : 'YENİLGİ'}</h1>
-        <p>${win ? `${esc(g.player.name)}, kıtanın tartışmasız hâkimi oldu!` : `${esc(g.player.name)} tarih sahnesinden silindi. Başkentini kaybeden devlet çöker.`}</p>
-        <p>Süre: ${fmtTime(g.time)}</p>${note}
-        <div class="end-b">${live ? '<button class="btn big" data-end="watch">İzlemeye Devam Et</button>' : ''}
-        <button class="btn big ${live ? 'red' : ''}" data-end="menu">${g.mp ? 'Ana Menü' : 'Yeniden Başla'}</button></div></div>`;
+      const cityCount = (k) => { let n = 0; for (const c of g.cities) if (c.owner === k) n++; return n; };
+      const st = (k) => (g.stats && g.stats[k]) || {};
+      const rows = g.countries.filter((c) => !c.isRebel && !c.absent).map((c) => ({ c, n: cityCount(c.id), s: st(c.id) }))
+        .sort((a, b) => (b.c.alive - a.c.alive) || (a.c.alive ? b.n - a.n : (b.s.deadAt || 0) - (a.s.deadAt || 0)));
+      const rank = rows.map((r, i) => {
+        const by = r.s.deadBy !== null && r.s.deadBy !== undefined && g.countries[r.s.deadBy] ? g.countries[r.s.deadBy] : null;
+        return `<li class="${r.c.isPlayer ? 'me' : ''} ${r.c.alive ? '' : 'dead'}" style="animation-delay:${1 + i * 0.07}s">
+          <span class="rk">${i + 1}</span>${this.seal(r.c, 'sm')}<b>${esc(r.c.name)}</b>
+          <small>${r.c.alive ? `${r.n} şehir` : `☠ ${r.s.deadAt !== null && r.s.deadAt !== undefined ? fmtTime(r.s.deadAt) : ''}${by ? ' · ' + esc(by.name) : ''}`}</small></li>`;
+      }).join('');
+      const killer = s.deadBy !== null && s.deadBy !== undefined && g.countries[s.deadBy] ? g.countries[s.deadBy] : null;
+      const sub = win ? `<b>${esc(P.name)}</b>, kıtanın tartışmasız hâkimi oldu! Tarih bu zaferi altın harflerle yazacak.`
+        : killer && !killer.isRebel ? `<b>${esc(P.name)}</b>, <b>${esc(killer.name)}</b> karşısında düştü. Başkentini kaybeden devlet çöker.`
+          : `<b>${esc(P.name)}</b> tarih sahnesinden silindi. Başkentini kaybeden devlet çöker.`;
+      const stat = (label, val, fmt) => `<div class="es"><b data-count="${val}" data-fmt="${fmt || ''}">${fmt === 't' ? fmtTime(val) : '0'}</b><span>${label}</span></div>`;
+      const stats = stat('Süre', g.time, 't') + stat('Ele geçirilen şehir', s.captured || 0) + stat('Kaybedilen şehir', s.lost || 0)
+        + stat('Yıkılan devlet', s.destroyed || 0) + stat('En çok şehir', s.peakCities || 0) + stat('En büyük ordu', s.peakTroops || 0, 'k');
+      const rnd = (a, b) => a + Math.random() * (b - a);
+      const fx = win
+        ? `<div class="confetti">${Array.from({ length: 60 }, (_, i) => `<i style="left:${rnd(0, 100).toFixed(1)}%;animation-delay:${rnd(0, 4).toFixed(2)}s;animation-duration:${rnd(3.2, 6).toFixed(2)}s;background:${['#e2b84a', '#c4483a', '#f4ead0', '#4d6b2f', '#2f5476'][i % 5]};--r:${Math.round(rnd(360, 1080))}deg;--x:${Math.round(rnd(-60, 60))}px"></i>`).join('')}</div>`
+        : `<div class="embers">${Array.from({ length: 34 }, () => `<i style="left:${rnd(0, 100).toFixed(1)}%;animation-delay:${rnd(0, 6).toFixed(2)}s;animation-duration:${rnd(5, 9).toFixed(2)}s;--x:${Math.round(rnd(-80, 80))}px"></i>`).join('')}</div>`;
+      el.innerHTML = `${fx}<div class="end frame ${win ? 'win' : 'lose'}">
+        <div class="end-emblem">${win ? END_CROWN : END_SHIELD}</div>
+        <div class="end-ribbon"><h1>${win ? 'Zafer' : 'Yenilgi'}</h1></div>
+        <p class="end-sub">${sub}</p>
+        <div class="end-stats">${stats}</div>
+        <h5>Son durum</h5><ol class="end-rank">${rank}</ol>${note}
+        <div class="end-b">${live ? '<button class="btn big" data-end="watch">👁 İzlemeye Devam Et</button>' : ''}
+          <button class="btn big ${win ? 'green' : 'red'}" data-end="menu">${g.mp ? '🏠 Ana Menü' : '⟳ Yeni Oyun'}</button></div></div>`;
+      el.classList.remove('hidden');
+      // sayılar sıfırdan yukarı sayar
+      el.querySelectorAll('[data-count]').forEach((b) => {
+        if (b.dataset.fmt === 't') return;
+        const target = +b.dataset.count, k = b.dataset.fmt === 'k';
+        const t0 = performance.now() + 700;
+        const step = (now) => {
+          const f = Math.min(1, Math.max(0, (now - t0) / 1200)), e = 1 - Math.pow(1 - f, 3);
+          b.textContent = k ? fmtK(Math.round(target * e)) : String(Math.round(target * e));
+          if (f < 1) requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+      });
       el.onclick = (e) => {
         const b = e.target.closest('[data-end]');
         if (!b) return;
-        if (b.dataset.end === 'watch') { el.classList.add('hidden'); return; }
+        if (b.dataset.end === 'watch') { el.classList.add('hidden'); document.body.classList.remove('end-win', 'end-lose'); return; }
         if (g.mp === 'host' && live && !confirm('Odayı kapatırsan oyun herkes için biter. Emin misin?')) return;
-        location.reload();
+        location.href = location.pathname;
       };
     }
   }
+
+  // zafer tacı ve kırık kalkan amblemleri
+  const END_CROWN = `<svg viewBox="0 0 96 96" aria-hidden="true"><defs><linearGradient id="gGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe08a"/><stop offset="1" stop-color="#b8892e"/></linearGradient></defs>
+    <circle cx="48" cy="50" r="44" fill="#3a2814" stroke="#e2b84a" stroke-width="3"/>
+    <path d="M18 64 L22 30 L36 46 L48 22 L60 46 L74 30 L78 64 Z" fill="url(#gGold)" stroke="#6b4a12" stroke-width="2.5" stroke-linejoin="round"/>
+    <rect x="18" y="63" width="60" height="10" rx="3" fill="#c9962e" stroke="#6b4a12" stroke-width="2.5"/>
+    <circle cx="48" cy="22" r="4.5" fill="#c4483a" stroke="#6b4a12" stroke-width="1.5"/><circle cx="22" cy="30" r="3.5" fill="#c4483a" stroke="#6b4a12" stroke-width="1.5"/><circle cx="74" cy="30" r="3.5" fill="#c4483a" stroke="#6b4a12" stroke-width="1.5"/>
+    <circle cx="34" cy="68" r="2.4" fill="#2f5476"/><circle cx="48" cy="68" r="2.4" fill="#4d6b2f"/><circle cx="62" cy="68" r="2.4" fill="#2f5476"/></svg>`;
+  const END_SHIELD = `<svg viewBox="0 0 96 96" aria-hidden="true">
+    <circle cx="48" cy="50" r="44" fill="#2a1d10" stroke="#7c2014" stroke-width="3"/>
+    <path d="M48 16 L74 25 V45 C74 62 63 73 48 80 C33 73 22 62 22 45 V25 Z" fill="#6b5a48" stroke="#1b120a" stroke-width="2.5" stroke-linejoin="round"/>
+    <path d="M48 16 V80" stroke="#4d3f31" stroke-width="2"/>
+    <path d="M51 17 L44 33 L54 43 L43 56 L49 79" fill="none" stroke="#120b05" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="M30 70 L66 30" stroke="#a3271c" stroke-width="4" stroke-linecap="round" opacity=".85"/></svg>`;
+
+  // Nasıl oynanır (giriş ekranında ve oyun menüsünde)
+  G.VERSION_LABEL = 'v1.0';
+  G.HELP_HTML = `<div class="help">
+    <section><h4>🎯 Amaç</h4><p>Rakip devletlerin <b>başkentlerini</b> ele geçir. Başkenti düşen devlet çöker, kalan şehirleri isyancılara geçer.
+      Haritada senden başka yalnızca müttefiklerin kalınca kazanırsın.</p></section>
+    <section><h4>🏭 Başlangıç ve ekonomi</h4><p>Önce fabrikalarını kuracağın kendi şehrini seç. Her fabrika <b>15 sn'de 1₺</b> verir, yenisi 6 sn'de kurulur.
+      Kendi toprağın üzerinden hiçbir fabrikaya bağlı olmayan şehirlerdeki askerler <b>❗ %50 zayıf ve yavaştır</b>.</p></section>
+    <section><h4>⚔ Asker ve savaş</h4><p>Birliğe (haritadaki asker sayısına) dokun, miktarı seç, hedef şehre dokun: kendi şehrine taşır, <b>komşu düşman şehrine saldırır</b>.
+      Saldırı sınırda hemen başlar; büyük birlik şehri daha çabuk alır. Bir ülkeye saldırmak için önce Diplomasi'den <b>savaş hakkı</b> alıp (20 sn) savaş ilan et.
+      Saldırdığın şehrin çıkış şehri saldırıya uğrarsa birliğin yarısı savunmaya döner.</p></section>
+    <section><h4>🤝 Diplomasi</h4><p>Talep, destek ve takas teklif et; ittifak kur ya da bir ittifaka katıl; barış teklif et ya da teslim ol.
+      İlişkiler tekliflerin kabul edilme şansını etkiler. Müttefiklerini savaşa çağırabilirsin.</p></section>
+    <section><h4>🎖 Askeri yönetim ve mağaza</h4><p>Asker üret (+1k = 1₺), <b>Sınırlara dağıt</b> ile yeni askerleri cepheye yolla, saldırı/savunma geliştir,
+      ideolojine özel geliştirmeleri al, ordu kur (ordunun şehrine gelen askerler orduya katılır). Mağazada fabrika, blitzkrieg, uçak, füze, isyan ve savunmalar var.</p></section>
+    <section><h4>🌐 Çevrimiçi</h4><p>Giriş ekranında <b>Oda Kur</b> ile 5 harfli bir kod al, arkadaşların kodla katılsın. Harita oyuncu sayısına göre oluşur.
+      Oyun odayı kuran cihazda çalışır; o sekme açık kalmalı.</p></section>
+    <section><h4>⌨ Kısayollar</h4><p>WASD / oklar: kamera · tekerlek: yakınlaştır · 1–4: menüler · Boşluk: başkente dön · Q / sağ tık: iptal ·
+      Esc: oyun menüsü · P: duraklat · M: ses</p></section></div>`;
 
   G.UI = UI;
 })();

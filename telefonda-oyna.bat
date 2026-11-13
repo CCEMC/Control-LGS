@@ -1,9 +1,9 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "(Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254*' } | Select-Object -First 1 -ExpandProperty IPAddress)"`) do set IP=%%i
+for /f "usebackq delims=" %%i in (`powershell -NoProfile -oommand "(Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254*' } | Select-Object -First 1 -ExpandProperty IPAddress)"`) do set IP=%%i
 echo ==========================================================
-echo   Hukumdarlar Cagi - telefondan oyna
+echo   uukumdarlar oagi - telefondan oyna
 echo.
 echo   1) Telefon ve bilgisayar AYNI Wi-Fi aginda olmali.
 echo   2) Telefonun tarayicisinda su adresi ac:

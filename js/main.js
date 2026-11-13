@@ -104,10 +104,20 @@
     $('codeIn').addEventListener('input', () => { const v = G.Net.cleanCode($('codeIn').value); if (v !== $('codeIn').value) $('codeIn').value = v; validate(); });
     $('codeIn').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !$('joinBtn').disabled) joinRoom(); });
     $('lobby').addEventListener('click', onLobbyClick);
+    $('helpBtn').addEventListener('click', showHelpStart);
+    $('verLbl').textContent = 'Control-LGS ' + G.VERSION_LABEL;
     // davet bağlantısı: ?oda=KOD
     const inv = G.Net.cleanCode(new URLSearchParams(location.search).get('oda'));
     if (inv.length === 5) { $('codeIn').value = inv; $('onlineHint').textContent = `Davet: ${inv} odası. Adını yaz, ideolojini seç ve Katıl'a bas.`; }
     validate();
+  }
+  // giriş ekranında "Nasıl oynanır?" penceresi
+  function showHelpStart() {
+    const l = $('dialog');
+    l.innerHTML = `<div class="dlg frame wide"><h3>📖 Nasıl Oynanır</h3><div class="dlg-b">${G.HELP_HTML}</div>
+      <div class="dlg-f"><button class="btn green" data-close>Tamam</button></div></div>`;
+    l.classList.remove('hidden'); l.classList.add('top');
+    l.onclick = (e) => { if (e.target === l || e.target.closest('[data-close]')) { l.classList.add('hidden'); l.classList.remove('top'); l.innerHTML = ''; } };
   }
   function validate() {
     const ok = $('nameIn').value.trim().length >= 2 && startState.ideology;
@@ -185,7 +195,7 @@
     if (b.dataset.lb === 'copy') {
       const url = location.origin + location.pathname + '?oda=' + session.code;
       try {
-        if (navigator.share && isTouch) await navigator.share({ title: 'Hükümdarlar Çağı', text: `Hükümdarlar Çağı odama gel! Kod: ${session.code}`, url });
+        if (navigator.share && isTouch) await navigator.share({ title: 'Control-LGS', text: `Control-LGS odama gel! Kod: ${session.code}`, url });
         else { await navigator.clipboard.writeText(url); onlineMsg('Davet bağlantısı kopyalandı: ' + url); }
       } catch (err) { onlineMsg('Kopyalanamadı; kodu elle paylaş: ' + session.code); }
       return;
@@ -242,7 +252,7 @@
     } else {
       document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') keepAwake(); });
       // odayı kuran cihaz kapanırsa oyun herkes için biter: yanlışlıkla kapatmaya karşı uyar
-      if (game.mp === 'host') window.addEventListener('beforeunload', (e) => { if (!game.over) { e.preventDefault(); e.returnValue = ''; } });
+      if (game.mp === 'host') window.addEventListener('beforeunload', (e) => { if (!game.over && !G.leaving) { e.preventDefault(); e.returnValue = ''; } });
       if (net && net.role === 'client') {
         net.cb.onSnap = () => ui.syncInbox();
         net.cb.onCmdError = (m) => ui.toast(m, 'bad');
@@ -257,6 +267,17 @@
     fsBtn.addEventListener('click', () => { if (document.fullscreenElement) document.exitFullscreen(); else goFullscreen(); });
     // hata ayıklama: konsoldan __dbg.step(saniye) ile oyunu ilerletebilirsin
     window.__game = game;
+    // oyun menüsü (☰ / Esc): ses, nasıl oynanır, ana menü; tek oyunculuda açıkken oyun durur
+    ui.netCode = net ? net.code : null;
+    ui.onToggleSound = () => sndBtn.click();
+    ui.onMainMenu = () => {
+      G.leaving = true;
+      if (!game.mp) { writeSave(); location.href = location.pathname; return; }
+      const back = game.mp === 'client' && net ? '?oda=' + net.code : '';
+      try { if (net) net.close(); } catch (e) { /* yok */ }
+      setTimeout(() => { location.href = location.pathname + back; }, 300);
+    };
+    $('menuBtn').addEventListener('click', () => { if (ui.dialogOpen()) ui.closeDialog(); else ui.openGameMenu(); });
     window.__dbg = {
       game, ui, renderer, writeSave, net,
       step(sec) { for (let t = 0; t < sec; t += 0.05) game.update(0.05); renderer.draw(); ui.updateTop(); ui.updateActionBar(); ui.renderPanel(); },
@@ -269,6 +290,7 @@
       const dt = Math.min(cap, Math.max(0, (now - lastSim) / 1000));
       lastSim = now;
       if (game.mp === 'client') { net.advance(dt); return; }
+      if (!game.mp && ui.paused) return; // tek oyunculu: oyun menüsü açıkken duraklat
       acc += dt;
       while (acc >= 0.05) { game.update(0.05); acc -= 0.05; }
     }
@@ -337,7 +359,8 @@
       if (keyMap[e.code]) { keys[keyMap[e.code]] = true; e.preventDefault(); }
       if (e.code === 'KeyQ') ui.cancel();
       if (e.code === 'KeyM') $('sndBtn').click();
-      if (e.code === 'Escape') { if (ui.dialogOpen()) ui.closeDialog(); else ui.cancel(); }
+      if (e.code === 'Escape') { if (ui.dialogOpen()) ui.closeDialog(); else if (!ui.cancel()) ui.openGameMenu(); }
+      if (e.code === 'KeyP' && !game.mp) { if (ui.dialogOpen() && ui.paused) ui.closeDialog(); else if (!ui.dialogOpen()) ui.openGameMenu(); }
       if (e.code === 'Digit1') ui.openMenu('diplomacy');
       if (e.code === 'Digit2') ui.openMenu('military');
       if (e.code === 'Digit3') ui.openMenu('alliances');

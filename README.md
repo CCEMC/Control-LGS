@@ -1,6 +1,6 @@
-# Hükümdarlar Çağı
+# Control-LGS
 
-Eski harita temalı 2D strateji oyunu. Şimdilik 8 bot ülkeye karşı oynanır.
+Eski harita temalı 2D strateji oyunu. Tek başına 8 bot ülkeye karşı ya da arkadaşlarınla çevrimiçi (2–9 kişi) oynanır.
 Bilgisayarda ve telefonda çalışır; telefona **uygulama (PWA)** olarak yüklenebilir.
 
 ## ▶ Hemen oyna: https://ccemc.github.io/Control-LGS/
@@ -60,6 +60,12 @@ bir sonraki açılışta yeni sürümü alır.
 - Uygulama arka plandayken oyun duraklar
 - **Ses ve müzik** (dosyasız, tamamı tarayıcıda üretilir): barışta sakin müzik, savaşta taiko davullu savaş müziği, çatışmada daha yoğun hali;
   kılıç sesleri, savaş boruları, fanfar, füze/patlama, para ve arayüz sesleri. Üst çubuktaki 🔊 düğmesi (ya da **M**) sesi açar/kapatır.
+- **Oyun menüsü** (☰ düğmesi ya da **Esc**): duraklat (tek oyunculuda), ses aç/kapat, **Nasıl Oynanır**, kaydedip ana menüye dön.
+- **Diplomasi ekranı:** savaş/müttefik/barış durumuna göre sıralı ülke listesi; seçili ülkenin ilişki ölçeği, bekleyen teklifler,
+  savaş hakkı geri sayımı, güç dengesi (asker, şehir, fabrika, hazine karşılaştırması) ve haritada başkentini gösterme.
+- **İttifaklar ekranı:** şehir sayısına göre güç sıralaması, ittifak kartları (toplam asker/şehir), süren savaşlar.
+- **Zafer / yenilgi ekranı:** taç ya da kırık kalkan amblemi, istatistikler (süre, ele geçirilen/kaybedilen şehir, yıkılan devlet,
+  en çok şehir, en büyük ordu) ve son sıralama; zaferde konfeti, yenilgide kül ve griye dönen harita.
 - **Animasyonlar:** yürüyen birlikler sallanır ve arkalarında toz kalkar; asker doğunca/sınıra varınca yükselen "+1k" yazısı,
   orduya katılınca ordu renginde halkalar, savunmaya dönüşte altın ok + kalkan; menüde sayılar değişince zıplar, anahtar kayarak açılır.
 
@@ -112,6 +118,7 @@ fiyatı seviye başına artar (6 → 9 → 12₺, Komünizm'de %10 ucuz). Etkile
 | Tekerlek: yakınlaştır | İki parmak / + − |
 | Birliğe (veya birlikli şehre) tıkla → miktar seç → hedef şehre sol tıkla | Dokun |
 | Q / sağ tık / Esc: iptal | İptal butonu |
+| Esc (iptal edilecek bir şey yokken): oyun menüsü · P: duraklat | ☰ düğmesi |
 | 1–4: menüler, Boşluk: başkente dön, M: sesi aç/kapat | Alt (yatayda sağ) menü çubuğu, 🔊 düğmesi |
 
 ## Dosyalar
