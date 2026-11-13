@@ -10,7 +10,20 @@ Telefona yüklemek için kamerayla okut, açılan sayfada **Uygulamayı Yükle**
 
 <img src="telefon-qr.png" alt="Oyunun adresine giden QR kod" width="260">
 
-**Güncelleme yayınlamak:** dosyaları değiştir, `sw.js` içindeki `VERSION` değerini arttır, sonra
+## 🌐 Arkadaşlarınla çevrimiçi oyna
+
+1. Adını yaz, ideolojini seç, **Oda Kur**'a bas. 5 harfli bir oda kodu çıkar (ör. `JDBMC`).
+2. **Daveti Paylaş** ile bağlantıyı gönder ya da kodu söyle. Arkadaşların adını ve ideolojisini seçip kodu yazar, **Katıl**'a basar.
+3. Herkes gelince **Oyunu Başlat**. Harita **oyuncu sayısı kadar ülkeyle** (2–9) oluşturulur; bot yoktur, ülkeler rastgele dağıtılır.
+4. Herkes fabrika şehrini seçince savaş saati başlar (seçmeyenlerinki 1 dk sonra başkentine kurulur).
+
+- Sunucu yoktur: oyun **odayı kuran cihazda** çalışır, diğerleri ona bağlanır (WebRTC, bağlantı kurulumu için ücretsiz PeerJS aracısı).
+  Odayı kuran kişi sekmeyi kapatırsa oyun herkes için biter; yenilse bile sekmeyi açık tutmalı.
+- Bağlantısı kopan oyuncunun ülkesini bot yönetir; **aynı adla aynı odaya** yeniden katılınca kaldığı yerden devam eder.
+- Çevrimiçi oyunlar kaydedilmez. Bazı mobil/kurumsal ağlarda doğrudan bağlantı kurulamayabilir (o zaman başka ağ dene).
+- Oyunu kuran cihaz her oyuncuya saniyede 5 durum güncellemesi yollar (2 kişide ~30 KB/sn, 9 kişide oyuncu başına ~85 KB/sn).
+
+**Güncelleme yayınlamak:** dosyaları değiştir, `sw.js` içindeki `VERSION` değerini ve `js/net.js` içindeki `BUILD` değerini (ikisi aynı) arttır, sonra
 `git add -A`, `git commit -m "açıklama"`, `git push`. Site 1-2 dakika içinde güncellenir; telefondaki uygulama
 bir sonraki açılışta yeni sürümü alır.
 
@@ -103,7 +116,9 @@ fiyatı seviye başına artar (6 → 9 → 12₺, Komünizm'de %10 ucuz). Etkile
 
 ## Dosyalar
 
-- `js/mapgen.js` — Voronoi + kıvrımlı sınırlarla harita, petek düzeninde eşit aralıklı 9 başkent, eşit şehir dağılımı
+- `js/mapgen.js` — Voronoi + kıvrımlı sınırlarla harita; 9 ülkede petek düzeninde başkentler, 2–8 ülkede (çevrimiçi) ülke sayısına
+  göre küçülen kıta ve eşit alanlı bölgelere yerleşen başkentler; eşit şehir dağılımı
+- `js/net.js` — çevrimiçi oyun: oda kur / katıl (PeerJS), komutların host'a iletilmesi, durum eşitleme
 - `js/game.js` — oyun kuralları, kayıt/yükleme. DOM kullanmaz; tüm eylemler `cmd*` komutlarıyla gelir
 - `js/bot.js` — bot yapay zekâsı (oyuncuyla aynı komutları kullanır)
 - `js/render.js` — harita, birlikler, efektler, minimap
@@ -112,7 +127,9 @@ fiyatı seviye başına artar (6 → 9 → 12₺, Komünizm'de %10 ucuz). Etkile
 - `manifest.webmanifest`, `sw.js`, `icons/` — mobil uygulama dosyaları.
   Oyun dosyalarını değiştirirsen `sw.js` içindeki `VERSION` değerini arttır ki telefonlar yeni sürümü alsın.
 
-## Çevrimiçiye geçiş notu
+## Çevrimiçi mimarisi
 
-`Game` sınıfı arayüzden bağımsız ve komut tabanlı. Çok oyunculu için `game.js` + `mapgen.js` + `bot.js` bir Node sunucusunda
-çalıştırılır; istemciler `cmdMove`, `cmdPropose`, `cmdBuy`… çağrılarını WebSocket mesajı olarak gönderir, sunucu durumu yayınlar.
+`Game` sınıfı arayüzden bağımsız ve komut tabanlı. Odayı kuran cihaz (host) tek doğru kopyayı çalıştırır. İstemciler aynı tohumla
+haritayı kendileri üretir; `cmd*` çağrıları önce yerelde uygulanır (anında tepki, olaylar susturulur), sonra host'a gönderilir.
+Host komutu kendi kopyasında, gönderenin ülkesi adına çalıştırır ve 200 ms'de bir `snapshot()` ile o oyuncuya ait olayları yollar;
+istemci `applySnapshot()` ile kendi kopyasını değiştirir. İleride gerçek bir sunucuya geçmek için aynı mesajlar WebSocket üzerinden taşınabilir.

@@ -296,9 +296,9 @@
   function onGameEvent(ev, game) {
     if (!ctx) return;
     const me = game.playerId;
-    if (ev.type === 'income') { sfx('coin'); return; }
+    if (ev.type === 'income') { if (ev.cid === undefined || ev.cid === me) sfx('coin'); return; }
     if (ev.type === 'proposal') { if (ev.p && ev.p.to === me) sfx('msg'); return; }
-    if (ev.type === 'gameover') { sfx(ev.win ? 'win' : 'lose'); return; }
+    if (ev.type === 'gameover') { if (ev.cid === undefined || ev.cid === me) sfx(ev.win ? 'win' : 'lose'); return; }
     if (ev.type === 'fx') {
       if (ev.kind === 'explosion') sfx('explosion');
       else if (ev.kind === 'intercept') sfx('zap');
@@ -315,11 +315,11 @@
         if (ev.cid === me) sfx('victory'); else if (ev.prev === me) sfx('defeat');
         break;
       case 'eliminated':
-        if (ev.player) break; // oyuncu yenilgisi 'gameover' ile çalar
+        if (ev.cid === me) break; // oyuncu yenilgisi 'gameover' ile çalar
         sfx('capitalFall'); break;
       case 'warDeclared': sfx(ev.cid === me || ev.target === me ? 'warDecl' : 'gongSoft'); break;
       case 'peace': if (ev.cid === me || ev.target === me) sfx('peace'); break;
-      case 'troopReady': sfx('troop'); break;
+      case 'troopReady': if (ev.cid === me) sfx('troop'); break;
       case 'recall': if (ev.cid === me) { sfx('march'); sfx('horn'); } break;
       case 'armyJoin': if (ev.cid === me) sfx('good'); break;
       case 'buy':

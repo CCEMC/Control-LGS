@@ -142,7 +142,7 @@
   }
 
   function canPingPlayer(game, cid, to) {
-    if (!game.countries[to].isPlayer) return true;
+    if (!game.countries[to].isHuman) return true;
     const b = game.countries[cid].bot;
     if (b.lastToPlayer && game.time - b.lastToPlayer < 75) return false;
     b.lastToPlayer = game.time;

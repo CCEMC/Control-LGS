@@ -35,7 +35,7 @@
       this.marking = false;
       this.marked = new Set();
       this.targeting = null;
-      this.setupMode = !opts.resumed && game.phase === 'setup';
+      this.setupMode = !opts.resumed && game.phase === 'setup' && !game.player.setupDone;
       this.menu = null;
       this.diploSel = null;
       this.lastHtml = '';
@@ -85,6 +85,20 @@
       });
     }
 
+    // Çevrimiçi kurulum: fabrikasını kuran oyuncu diğerlerini bekler (süre dolunca host başkentlere otomatik kurar)
+    updateSetup() {
+      const g = this.game;
+      if (this.setupMode && g.player.setupDone) { this.setupMode = false; this.setupBanner(false); }
+      const el = this.$('setupBanner');
+      if (g.phase === 'setup' && g.player.setupDone) {
+        const all = g.countries.filter((c) => c.alive && !c.isRebel);
+        const html = `Fabrikaların kuruldu. Diğer hükümdarlar bekleniyor… <b>${all.filter((c) => c.setupDone).length}/${all.length}</b> hazır
+          <small>Herkes hazır olunca oyun başlar. Seçmeyenlerin fabrikaları 1 dakika sonra başkentlerine kurulur.</small>`;
+        if (el.dataset.wait !== html) { el.dataset.wait = html; el.innerHTML = html; }
+        el.classList.remove('hidden');
+      } else if (el.dataset.wait) { el.dataset.wait = ''; if (!this.setupMode) el.classList.add('hidden'); }
+    }
+
     setupBanner(on) {
       const el = this.$('setupBanner');
       el.classList.toggle('hidden', !on);
@@ -101,16 +115,27 @@
       if (ev.type === 'toast') {
         if (ev.to === null || ev.to.includes(g.playerId)) this.toast(ev.text, ev.kind, true);
       } else if (ev.type === 'proposal') {
-        this.inbox.push(ev.p.id);
+        if (ev.p.to !== g.playerId) return;
+        if (!this.inbox.includes(ev.p.id)) this.inbox.push(ev.p.id);
+        if (!g.proposals.some((p) => p.id === ev.p.id)) g.proposals.push(ev.p); // istemci: anlık görüntüden önce gelebilir
         this.renderInbox();
       } else if (ev.type === 'resolved') {
         if (this.inbox.includes(ev.p.id)) { this.inbox = this.inbox.filter((x) => x !== ev.p.id); this.renderInbox(); }
       } else if (ev.type === 'income') {
+        if (ev.cid !== undefined && ev.cid !== g.playerId) return;
         const el = this.$('tbMoneyBox');
         el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
       } else if (ev.type === 'gameover') {
+        if (ev.cid !== undefined && ev.cid !== g.playerId) return;
         this.showEnd(ev.win);
       }
+    }
+    // Çevrimiçi istemci: gelen kutusunu sunucudan gelen teklif listesiyle eşitle
+    syncInbox() {
+      const g = this.game, me = g.playerId;
+      const mine = g.proposals.filter((p) => p.to === me).map((p) => p.id);
+      const next = this.inbox.filter((id) => mine.includes(id)).concat(mine.filter((id) => !this.inbox.includes(id)));
+      if (next.length !== this.inbox.length || next.some((id, i) => id !== this.inbox[i])) { this.inbox = next; this.renderInbox(); }
     }
 
     toast(text, kind, fromGame) {
@@ -178,7 +203,7 @@
 
     handleClick(cityId, unit) {
       const g = this.game, me = g.playerId;
-      if (g.over) return;
+      if (g.over || g.viewerDone) return;
       if (this.setupMode) {
         if (cityId === null) return;
         const r = g.cmdStartFactories(me, cityId);
@@ -422,7 +447,7 @@
 
     htmlDiplomacy() {
       const g = this.game, me = g.playerId, P = g.player;
-      const list = g.countries.filter((c) => !c.isRebel && !c.isPlayer).map((c) => {
+      const list = g.countries.filter((c) => !c.isRebel && !c.isPlayer && !c.absent).map((c) => {
         const st = c.alive ? this.relStatus(me, c.id) : { t: 'Yıkıldı', c: 'dead' };
         return `<li data-act="dsel" data-id="${c.id}" class="${this.diploSel === c.id ? 'sel' : ''} ${c.alive ? '' : 'dead'}">
           <span class="sw" style="background:${c.color}"></span><span class="nm">${esc(c.name)}</span><span class="chip ${st.c}">${st.t}</span></li>`;
@@ -561,7 +586,7 @@
         if (it.key === 'factory') note = `Şehir başına en fazla ${g.factoryLimit(me)}`;
         if (it.key === 'blitz' && P.blitzUntil > g.time) note = 'Aktif — alırsan süre uzar';
         if (it.key === 'rebellion') {
-          const opts = g.countries.filter((c) => c.alive && !c.isRebel && c.id !== me).map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+          const opts = g.countries.filter((c) => c.alive && !c.isRebel && c.id !== me && !g.isAlly(me, c.id)).map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
           extra = `<select id="rebelSel">${opts}</select>`;
         }
         const label = it.target && it.target !== 'country' ? 'Şehir Seç' : 'Satın Al';
@@ -646,7 +671,7 @@
       };
       switch (item) {
         case 'blitz': done(g.cmdBuy(me, 'blitz'), 'Blitzkrieg başladı!'); break;
-        case 'factoryLimit': done(g.cmdBuy(me, 'factoryLimit'), `Fabrika sınırı artık ${g.factoryLimit(me) + 1}`); break;
+        case 'factoryLimit': { const r = g.cmdBuy(me, 'factoryLimit'); done(r, `Fabrika sınırı artık ${g.factoryLimit(me)}`); break; }
         case 'cityDef':
           startTarget('Şehir savunması kurulacak kendi şehrini seç', own((c) => (c.cityDef ? 'Bu şehirde zaten savunma var' : null)),
             (cid) => done(g.cmdBuy(me, 'cityDef', { city: cid }), `${g.cities[cid].name} şehrine savunma kuruldu.`));
@@ -848,10 +873,23 @@
       const g = this.game;
       const el = this.$('endScreen');
       el.classList.remove('hidden');
+      // Çevrimiçi: oyun diğerleri için sürebilir. Odayı kuran cihaz kapanırsa oyun herkes için biter.
+      const live = g.mp && !g.over;
+      const note = !live ? '' : g.mp === 'host'
+        ? '<p class="note"><b>Oda senin cihazında çalışıyor.</b> Diğer hükümdarlar oynamaya devam ediyor; bu sekmeyi kapatırsan oyun herkes için biter.</p>'
+        : '<p class="note">Diğer hükümdarlar oynamaya devam ediyor. İstersen izleyebilirsin.</p>';
       el.innerHTML = `<div class="end frame"><h1>${win ? 'ZAFER' : 'YENİLGİ'}</h1>
         <p>${win ? `${esc(g.player.name)}, kıtanın tartışmasız hâkimi oldu!` : `${esc(g.player.name)} tarih sahnesinden silindi. Başkentini kaybeden devlet çöker.`}</p>
-        <p>Süre: ${fmtTime(g.time)}</p>
-        <button class="btn big" onclick="location.reload()">Yeniden Başla</button></div>`;
+        <p>Süre: ${fmtTime(g.time)}</p>${note}
+        <div class="end-b">${live ? '<button class="btn big" data-end="watch">İzlemeye Devam Et</button>' : ''}
+        <button class="btn big ${live ? 'red' : ''}" data-end="menu">${g.mp ? 'Ana Menü' : 'Yeniden Başla'}</button></div></div>`;
+      el.onclick = (e) => {
+        const b = e.target.closest('[data-end]');
+        if (!b) return;
+        if (b.dataset.end === 'watch') { el.classList.add('hidden'); return; }
+        if (g.mp === 'host' && live && !confirm('Odayı kapatırsan oyun herkes için biter. Emin misin?')) return;
+        location.reload();
+      };
     }
   }
 

@@ -36,6 +36,7 @@
       <div class="tb-stat tb-opt" title="Oyun süresi"><span class="lbl">Süre</span><b id="tbTime"></b></div>
       <div class="tb-flag blitz hidden" id="tbBlitz"></div>
       <div class="tb-flag war hidden" id="tbWar"></div>
+      <div class="tb-flag net hidden" id="tbNet"></div>
       <span class="tb-btns">
         <button id="sndBtn" class="tb-btn" title="Ses ve müzik: aç / kapat (M)">🔊</button>
         <button id="fsBtn" class="tb-btn" title="Tam ekran">⛶</button>
@@ -98,8 +99,18 @@
         <div id="ideoCards"></div>
       </div>
 
-      <button id="startBtn" class="btn big" disabled>Başla</button>
+      <button id="startBtn" class="btn big" disabled>Tek Başına Oyna</button>
       <div id="startHint" class="hint"></div>
+
+      <div id="onlineBox" class="online">
+        <div class="or">ya da arkadaşlarınla çevrimiçi</div>
+        <div id="onlineRow" class="on-row">
+          <button id="hostBtn" class="btn green" disabled>🌐 Oda Kur</button>
+          <span class="on-join"><input id="codeIn" maxlength="5" placeholder="ODA KODU" autocomplete="off" autocapitalize="characters" spellcheck="false"><button id="joinBtn" class="btn" disabled>Katıl</button></span>
+        </div>
+        <div id="lobby" class="lobby hidden"></div>
+        <div id="onlineHint" class="hint">2–9 oyuncu · harita oyuncu sayısı kadar ülkeyle oluşturulur</div>
+      </div>
       <div id="installBox" class="install hidden">
         <button id="installBtn" class="btn">📲 Uygulamayı Yükle</button>
         <span>Ana ekrana ikon olarak eklenir, tam ekran ve internetsiz çalışır.</span>
@@ -107,7 +118,7 @@
       <div id="iosHint" class="install hidden">
         <span>iPhone/iPad: Safari'de <b>Paylaş</b> → <b>Ana Ekrana Ekle</b> ile uygulama olarak yükleyebilirsin.</span>
       </div>
-      <p class="foot">Şimdilik 8 bot ülkeye karşı yerel oyun · Kısayollar: 1-4 menüler, Boşluk başkente dön, Q iptal</p>
+      <p class="foot">Tek başına: 8 bot ülkeye karşı · Çevrimiçi: oda koduyla 2–9 kişi · Kısayollar: 1-4 menüler, Boşluk başkente dön, Q iptal</p>
     </div>
   </div>
 
@@ -118,6 +129,7 @@
   <script src="js/render.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/ui.js"></script>
+  <script src="js/net.js"></script>
   <script src="js/main.js"></script>
 </body>
 </html>

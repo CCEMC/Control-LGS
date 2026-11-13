@@ -123,11 +123,16 @@
     return p0.concat(p1);
   }
 
-  function generate(seed) {
+  // nCountries: ülke sayısı (tek oyunculu 9; çevrimiçide oyuncu sayısı kadar, 2–9).
+  // 9 ülkede harita eskisiyle birebir aynıdır (kayıtlar tohumdan yeniden üretilir). Daha az ülkede kıta
+  // ülke başına aynı alan kalacak şekilde küçülür, başkentler eşit alanlı bölgelerin merkezine yerleşir.
+  function generate(seed, nCountries) {
+    const N = nCountries >= 2 && nCountries <= 9 ? nCountries : 9;
     const rnd = mulberry32(seed);
     const nz = makeNoise(seed * 7 + 13);
-    const W = 3400, H = 2400;
-    const mX = 300, mY = 300;
+    const sc = N === 9 ? 1 : Math.sqrt(N / 9);
+    const W = Math.round(3400 * sc), H = Math.round(2400 * sc);
+    const mX = 300 * sc, mY = 300 * sc;
     const ax = W / 2 - mX, by = H / 2 - mY;
 
     // Yarımada ve körfez (fotoğraftaki gibi düzensiz kıyı)
@@ -142,16 +147,17 @@
       t = Math.max(0, Math.min(1, t));
       return [Math.hypot(p[0] - (a[0] + vx * t), p[1] - (a[1] + vy * t)), t];
     }
+    const edge = 140 * sc, fq = 0.0013 / sc;
     function isLand(x, y) {
-      if (x < 140 || y < 140 || x > W - 140 || y > H - 140) return false;
+      if (x < edge || y < edge || x > W - edge || y > H - edge) return false;
       const nx = (x - W / 2) / ax, ny = (y - H / 2) / by;
       let d = Math.pow(Math.pow(Math.abs(nx), 3) + Math.pow(Math.abs(ny), 3), 1 / 3);
-      d += (nz.fbm(x * 0.0013 + 3.1, y * 0.0013 + 7.7, 4) - 0.5) * 0.62;
+      d += (nz.fbm(x * fq + 3.1, y * fq + 7.7, 4) - 0.5) * 0.62;
       const [bd] = segDist([x, y], bayA, bayB);
-      if (bd < 150 + (nz.noise(x * 0.01, y * 0.01) - 0.5) * 60) return false;
+      if (bd < 150 * sc + (nz.noise(x * 0.01, y * 0.01) - 0.5) * 60 * sc) return false;
       if (d < 1) return true;
       const [pd, pt] = segDist([x, y], penA, penB);
-      return pd < 170 * (1 - pt * 0.45) + (nz.noise(x * 0.01 + 4, y * 0.01) - 0.5) * 60;
+      return pd < 170 * sc * (1 - pt * 0.45) + (nz.noise(x * 0.01 + 4, y * 0.01) - 0.5) * 60 * sc;
     }
 
     const pts = poisson(W, H, 128, rnd);
@@ -246,7 +252,130 @@
       cities.push({ id: ci, name, x: cx, y: cy, site: pts[i], outline, bbox: [minx, miny, maxx, maxy], neighbors: [...new Set(neighbors)], coastal, area: Math.abs(area) });
     }
 
-    // Ülkeler: başkentler 3x3 ızgarada eşit aralıklarla
+    const capitals = N === 9 ? hexCapitals(cities, rnd) : spreadCapitals(cities, N, rnd);
+    const owner = new Int32Array(cities.length).fill(-1);
+    const counts = new Array(N).fill(0);
+    capitals.forEach((cid, k) => { owner[cid] = k; counts[k] = 1; });
+    for (;;) {
+      const order = [...Array(N).keys()].sort((a, b) => counts[a] - counts[b] || rnd() - 0.5);
+      let grew = false;
+      for (const k of order) {
+        let bc = -1, bdist = Infinity;
+        const cap = cities[capitals[k]];
+        for (const city of cities) {
+          if (owner[city.id] !== k) continue;
+          for (const nb of city.neighbors) {
+            if (owner[nb] !== -1) continue;
+            const d = Math.hypot(cities[nb].x - cap.x, cities[nb].y - cap.y) * (0.9 + rnd() * 0.2);
+            if (d < bdist) { bdist = d; bc = nb; }
+          }
+        }
+        if (bc >= 0) { owner[bc] = k; counts[k]++; grew = true; break; }
+      }
+      if (!grew) break;
+    }
+    // sahipsiz kalan (olmamalı) -> komşu ülke
+    for (let pass = 0; pass < 5; pass++) {
+      for (const city of cities) {
+        if (owner[city.id] >= 0) continue;
+        const nb = city.neighbors.find((x) => owner[x] >= 0);
+        if (nb !== undefined) owner[city.id] = owner[nb];
+      }
+    }
+    for (const city of cities) if (owner[city.id] < 0) owner[city.id] = 0;
+
+    // Dengeleme: büyük ülkelerin sınır şehirlerini komşu küçük ülkelere aktar (bütünlük korunarak)
+    const connectedWithout = (k, removed) => {
+      const start = capitals[k];
+      const seen = new Set([start]);
+      const st = [start];
+      let n = 0;
+      while (st.length) {
+        const a = st.pop(); n++;
+        for (const b of cities[a].neighbors) if (b !== removed && owner[b] === k && !seen.has(b)) { seen.add(b); st.push(b); }
+      }
+      let total = 0;
+      for (let i = 0; i < owner.length; i++) if (owner[i] === k && i !== removed) total++;
+      return n === total;
+    };
+    // Bir şehri "from" ülkesinden komşu "to" ülkesine aktar (başkent değil, "from" bütün kalmalı)
+    const giveOne = (from, to) => {
+      const capT = cities[capitals[to]];
+      const cands = cities.filter((c) => owner[c.id] === from && !capitals.includes(c.id) && c.neighbors.some((n) => owner[n] === to))
+        .sort((a, b) => Math.hypot(a.x - capT.x, a.y - capT.y) - Math.hypot(b.x - capT.x, b.y - capT.y));
+      for (const c of cands) if (connectedWithout(from, c.id)) { owner[c.id] = to; return c.id; }
+      return -1;
+    };
+    // Büyükten küçüğe, ülke komşuluk grafiği üzerinden zincirleme aktarım
+    for (let iter = 0; iter < 300; iter++) {
+      const cnt = new Array(N).fill(0);
+      for (const o of owner) cnt[o]++;
+      const adj = Array.from({ length: N }, () => new Set());
+      for (const c of cities) for (const n of c.neighbors) if (owner[n] !== owner[c.id]) adj[owner[c.id]].add(owner[n]);
+      const pairs = [];
+      for (let a = 0; a < N; a++) for (let b = 0; b < N; b++) if (cnt[a] - cnt[b] >= 2) pairs.push([a, b, cnt[a] - cnt[b]]);
+      pairs.sort((p, q) => q[2] - p[2]);
+      let moved = false;
+      for (const [big, small] of pairs) {
+        const prev = new Map([[big, -1]]);
+        const q = [big];
+        while (q.length && !prev.has(small)) { const a = q.shift(); for (const b of adj[a]) if (!prev.has(b)) { prev.set(b, a); q.push(b); } }
+        if (!prev.has(small)) continue;
+        const path = [];
+        for (let x = small; x !== -1; x = prev.get(x)) path.unshift(x);
+        const done = [];
+        let ok = true;
+        for (let i = 0; i < path.length - 1; i++) {
+          const id = giveOne(path[i], path[i + 1]);
+          if (id < 0) { ok = false; break; }
+          done.push([id, path[i]]);
+        }
+        if (ok) { moved = true; break; }
+        for (const [id, o] of done.reverse()) owner[id] = o; // geri al
+      }
+      if (!moved) break;
+    }
+
+    return { W, H, seed, nCountries: N, cities, edges, owner: Array.from(owner), capitals, countryNames: COUNTRY_NAMES.slice() };
+  }
+
+  // N ≠ 9: başkentler k-ortalamalar ile (alan ağırlıklı) eşit büyüklükte bölgelerin merkezine yerleşir
+  function spreadCapitals(cities, N, rnd) {
+    const first = cities[Math.floor(rnd() * cities.length)];
+    const centers = [[first.x, first.y]];
+    while (centers.length < N) { // en uzak nokta örneklemesi: başlangıç merkezleri birbirinden uzak
+      let best = null, bd = -1;
+      for (const c of cities) {
+        let d = Infinity;
+        for (const m of centers) d = Math.min(d, (m[0] - c.x) ** 2 + (m[1] - c.y) ** 2);
+        if (d > bd) { bd = d; best = c; }
+      }
+      centers.push([best.x, best.y]);
+    }
+    for (let it = 0; it < 30; it++) {
+      const sx = new Array(N).fill(0), sy = new Array(N).fill(0), sw = new Array(N).fill(0);
+      for (const c of cities) {
+        let k = 0, bd = Infinity;
+        for (let i = 0; i < N; i++) { const d = (centers[i][0] - c.x) ** 2 + (centers[i][1] - c.y) ** 2; if (d < bd) { bd = d; k = i; } }
+        sx[k] += c.x * c.area; sy[k] += c.y * c.area; sw[k] += c.area;
+      }
+      for (let i = 0; i < N; i++) if (sw[i] > 0) centers[i] = [sx[i] / sw[i], sy[i] / sw[i]];
+    }
+    const capitals = [];
+    for (const [gx, gy] of centers) {
+      let bi = -1, bd = Infinity;
+      for (const city of cities) {
+        if (capitals.includes(city.id)) continue;
+        const d = Math.hypot(city.x - gx, city.y - gy);
+        if (d < bd) { bd = d; bi = city.id; }
+      }
+      capitals.push(bi);
+    }
+    return capitals;
+  }
+
+  // 9 ülke: başkentler petek (altıgen) düzende, eşit aralıklarla (eski harita)
+  function hexCapitals(cities, rnd) {
     const xs = cities.map((c) => c.x).sort((a, b) => a - b);
     const ys = cities.map((c) => c.y).sort((a, b) => a - b);
     const pct = (arr, p) => arr[Math.floor((arr.length - 1) * p)];
@@ -298,90 +427,7 @@
         if (!improved) break;
       }
     }
-    const owner = new Int32Array(cities.length).fill(-1);
-    const counts = new Array(9).fill(0);
-    capitals.forEach((cid, k) => { owner[cid] = k; counts[k] = 1; });
-    for (;;) {
-      const order = [...Array(9).keys()].sort((a, b) => counts[a] - counts[b] || rnd() - 0.5);
-      let grew = false;
-      for (const k of order) {
-        let bc = -1, bdist = Infinity;
-        const cap = cities[capitals[k]];
-        for (const city of cities) {
-          if (owner[city.id] !== k) continue;
-          for (const nb of city.neighbors) {
-            if (owner[nb] !== -1) continue;
-            const d = Math.hypot(cities[nb].x - cap.x, cities[nb].y - cap.y) * (0.9 + rnd() * 0.2);
-            if (d < bdist) { bdist = d; bc = nb; }
-          }
-        }
-        if (bc >= 0) { owner[bc] = k; counts[k]++; grew = true; break; }
-      }
-      if (!grew) break;
-    }
-    // sahipsiz kalan (olmamalı) -> komşu ülke
-    for (let pass = 0; pass < 5; pass++) {
-      for (const city of cities) {
-        if (owner[city.id] >= 0) continue;
-        const nb = city.neighbors.find((x) => owner[x] >= 0);
-        if (nb !== undefined) owner[city.id] = owner[nb];
-      }
-    }
-    for (const city of cities) if (owner[city.id] < 0) owner[city.id] = 0;
-
-    // Dengeleme: büyük ülkelerin sınır şehirlerini komşu küçük ülkelere aktar (bütünlük korunarak)
-    const connectedWithout = (k, removed) => {
-      const start = capitals[k];
-      const seen = new Set([start]);
-      const st = [start];
-      let n = 0;
-      while (st.length) {
-        const a = st.pop(); n++;
-        for (const b of cities[a].neighbors) if (b !== removed && owner[b] === k && !seen.has(b)) { seen.add(b); st.push(b); }
-      }
-      let total = 0;
-      for (let i = 0; i < owner.length; i++) if (owner[i] === k && i !== removed) total++;
-      return n === total;
-    };
-    // Bir şehri "from" ülkesinden komşu "to" ülkesine aktar (başkent değil, "from" bütün kalmalı)
-    const giveOne = (from, to) => {
-      const capT = cities[capitals[to]];
-      const cands = cities.filter((c) => owner[c.id] === from && !capitals.includes(c.id) && c.neighbors.some((n) => owner[n] === to))
-        .sort((a, b) => Math.hypot(a.x - capT.x, a.y - capT.y) - Math.hypot(b.x - capT.x, b.y - capT.y));
-      for (const c of cands) if (connectedWithout(from, c.id)) { owner[c.id] = to; return c.id; }
-      return -1;
-    };
-    // Büyükten küçüğe, ülke komşuluk grafiği üzerinden zincirleme aktarım
-    for (let iter = 0; iter < 300; iter++) {
-      const cnt = new Array(9).fill(0);
-      for (const o of owner) cnt[o]++;
-      const adj = Array.from({ length: 9 }, () => new Set());
-      for (const c of cities) for (const n of c.neighbors) if (owner[n] !== owner[c.id]) adj[owner[c.id]].add(owner[n]);
-      const pairs = [];
-      for (let a = 0; a < 9; a++) for (let b = 0; b < 9; b++) if (cnt[a] - cnt[b] >= 2) pairs.push([a, b, cnt[a] - cnt[b]]);
-      pairs.sort((p, q) => q[2] - p[2]);
-      let moved = false;
-      for (const [big, small] of pairs) {
-        const prev = new Map([[big, -1]]);
-        const q = [big];
-        while (q.length && !prev.has(small)) { const a = q.shift(); for (const b of adj[a]) if (!prev.has(b)) { prev.set(b, a); q.push(b); } }
-        if (!prev.has(small)) continue;
-        const path = [];
-        for (let x = small; x !== -1; x = prev.get(x)) path.unshift(x);
-        const done = [];
-        let ok = true;
-        for (let i = 0; i < path.length - 1; i++) {
-          const id = giveOne(path[i], path[i + 1]);
-          if (id < 0) { ok = false; break; }
-          done.push([id, path[i]]);
-        }
-        if (ok) { moved = true; break; }
-        for (const [id, o] of done.reverse()) owner[id] = o; // geri al
-      }
-      if (!moved) break;
-    }
-
-    return { W, H, seed, cities, edges, owner: Array.from(owner), capitals, countryNames: COUNTRY_NAMES.slice() };
+    return capitals;
   }
 
   G.MapGen = { generate };
