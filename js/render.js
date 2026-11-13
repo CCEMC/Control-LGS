@@ -7,7 +7,7 @@
   const FONT = "'IM Fell English', 'Palatino Linotype', Georgia, serif";
   const FONT_SC = "'IM Fell English SC', 'Palatino Linotype', Georgia, serif";
   // efekt süreleri (ms)
-  const FX_DUR = { shell: 1900, explosion: 1400, capture: 1400, intercept: 1400, recall: 1900, shield: 1300, join: 2000, arrive: 1500, spawn: 1300, depart: 1700 };
+  const FX_DUR = { explosion: 1400, capture: 1400, intercept: 1400, recall: 1900, shield: 1300, join: 2000, arrive: 1500, spawn: 1300, depart: 1700 };
   const easeOut = (t) => 1 - (1 - t) * (1 - t) * (1 - t);
   const easeBack = (t) => { const c = 1.9; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
 
@@ -31,12 +31,6 @@
           const c = game.cities[ev.city];
           const f = { ...ev, x: c.x, y: c.y, t0: performance.now(), dur: FX_DUR[ev.kind] || 1400 };
           if (ev.front !== undefined) { const b = game.cities[ev.front]; f.bx = (c.x + b.x) / 2; f.by = (c.y + b.y) / 2; }
-          if (ev.kind === 'shell' && ev.target !== undefined && game.cities[ev.target]) {
-            // topçu mermisi: ya hedef şehre ya da (şehrimize saldıranlara) sınıra düşer
-            const b = game.cities[ev.target];
-            f.tx = ev.border ? (c.x + b.x) / 2 : b.x; f.ty = ev.border ? (c.y + b.y) / 2 : b.y;
-            f.seed = Math.random() * 1000;
-          }
           this.fx.push(f);
           if (this.fx.length > 60) this.fx.splice(0, this.fx.length - 60);
         }
@@ -593,8 +587,7 @@
       const c = g.countries[u.owner];
       const txt = U.fmtK(u.troops);
       ctx.font = `bold ${12 * s}px ${FONT}`;
-      const icW = u.art ? 15 * s : 0;
-      const w = ctx.measureText(txt).width + 14 * s + icW, h = 18 * s;
+      const w = ctx.measureText(txt).width + 14 * s, h = 18 * s;
       const x0 = x - w / 2, y0 = y - h / 2;
       if (opts && opts.selected) { ctx.shadowColor = '#ffd75e'; ctx.shadowBlur = 14; }
       ctx.beginPath();
@@ -613,8 +606,7 @@
         ctx.strokeRect(x0 - 3, y0 - 3, w + 6, h + 6); ctx.setLineDash([]);
       }
       ctx.fillStyle = '#fbf1d6'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(txt, x + icW / 2, y + 0.5);
-      if (u.art) this.cannonIcon(ctx, x0 + 4 * s + icW / 2, y + 0.5, 12 * s, '#fbf1d6');
+      ctx.fillText(txt, x, y + 0.5);
       if (u.weak) this.weakBadge(ctx, x, y0 - 9 * s, 15 * s);
       if (u.army !== null) {
         const army = g.armies.find((a) => a.id === u.army);
@@ -664,19 +656,17 @@
       const fs = this.landFont();
       ctx.font = `bold ${fs}px ${FONT}`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
-      const icW = u.art ? fs * 1.15 : 0; // topçu: sayının solunda top simgesi
-      const tw = ctx.measureText(txt).width, w = tw + 12 * s + icW, h = fs * 1.25;
-      const x0 = x - w / 2, y0 = y - h / 2, tx = x + icW / 2;
+      const tw = ctx.measureText(txt).width, w = tw + 12 * s, h = fs * 1.25;
+      const x0 = x - w / 2, y0 = y - h / 2;
       ctx.lineWidth = fs * 0.4; ctx.strokeStyle = 'rgba(248,240,216,0.93)';
       if (opts && opts.selected) { ctx.shadowColor = '#ffcf4a'; ctx.shadowBlur = 16; ctx.strokeStyle = 'rgba(255,236,160,1)'; }
-      ctx.strokeText(txt, tx, y);
+      ctx.strokeText(txt, x, y);
       ctx.shadowBlur = 0;
       ctx.fillStyle = c.isRebel ? '#1d1d1d' : c.dark;
-      ctx.fillText(txt, tx, y + 0.5);
-      if (u.art) this.cannonIcon(ctx, tx - tw / 2 - icW * 0.55, y + fs * 0.05, fs * 1.05, c.isRebel ? '#1d1d1d' : c.dark);
+      ctx.fillText(txt, x, y + 0.5);
       if (c.isPlayer) {
         ctx.strokeStyle = '#d6a22a'; ctx.lineWidth = Math.max(2, fs * 0.13); ctx.lineCap = 'round';
-        ctx.beginPath(); ctx.moveTo(tx - tw / 2, y + fs * 0.58); ctx.lineTo(tx + tw / 2, y + fs * 0.58); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x - tw / 2, y + fs * 0.58); ctx.lineTo(x + tw / 2, y + fs * 0.58); ctx.stroke();
       }
       if (u.weak) this.weakBadge(ctx, x, y0 - fs * 0.32, fs * 0.95);
       if (opts && opts.marked) {
@@ -790,7 +780,6 @@
         if (sx < -160 || sx > this.vw + 160 || sy < -160 || sy > this.vh + 160) continue;
         const mine = f.owner === me;
         switch (f.kind) {
-          case 'shell': this.drawShell(ctx, f, t, s); break;
           case 'explosion':
             for (let k = 0; k < 3; k++) {
               ctx.beginPath(); ctx.arc(sx, sy, 10 + t * (60 + k * 25), 0, Math.PI * 2);
@@ -860,83 +849,6 @@
         }
       }
     }
-    // Topçu atışı: namlu ateşi ve duman → 3 mermi kavis çizerek uçar (iz bırakır) → hedefte patlamalar, toz ve "−500"
-    drawShell(ctx, f, t, s) {
-      if (f.tx === undefined) return;
-      const [ax, ay] = this.toScreen(f.x, f.y), [bx, by] = this.toScreen(f.tx, f.ty);
-      const dist = Math.hypot(bx - ax, by - ay), arc = Math.max(30 * s, dist * 0.45);
-      const rr = (k) => { const v = Math.sin(f.seed + k * 12.9898) * 43758.5453; return v - Math.floor(v); };
-      // namlu ateşi
-      if (t < 0.2) {
-        const k = t / 0.2;
-        ctx.fillStyle = `rgba(255,${200 - k * 80},80,${1 - k})`;
-        ctx.beginPath(); ctx.arc(ax, ay - 6 * s, (6 + k * 14) * s, 0, Math.PI * 2); ctx.fill();
-      }
-      // namlu dumanı
-      if (t < 0.6) {
-        const k = t / 0.6;
-        for (let i = 0; i < 4; i++) {
-          ctx.fillStyle = `rgba(110,100,90,${0.4 * (1 - k)})`;
-          ctx.beginPath(); ctx.arc(ax + (rr(i) - 0.5) * 22 * s * k, ay - 8 * s - k * 20 * s - i * 4 * s, (5 + k * 10 + i * 2) * s, 0, Math.PI * 2); ctx.fill();
-        }
-      }
-      for (let i = 0; i < 3; i++) {
-        const d0 = i * 0.06, fly = 0.5; // her mermi biraz gecikmeli
-        const ox = (rr(i + 3) - 0.5) * 34 * s, oy = (rr(i + 7) - 0.5) * 24 * s; // hedefte dağılım
-        const ex = bx + ox, ey = by + oy;
-        const p = (t - d0) / fly;
-        const pos = (q) => [ax + (ex - ax) * q, ay + (ey - ay) * q - Math.sin(q * Math.PI) * arc];
-        if (p > 0 && p < 1) {
-          // iz
-          for (let k = 1; k <= 6; k++) {
-            const q = Math.max(0, p - k * 0.035);
-            const [tx, ty] = pos(q);
-            ctx.fillStyle = `rgba(90,80,70,${0.28 - k * 0.04})`;
-            ctx.beginPath(); ctx.arc(tx, ty, (2.2 + k * 0.5) * s, 0, Math.PI * 2); ctx.fill();
-          }
-          const [mx, my] = pos(p);
-          ctx.fillStyle = '#2a2018'; ctx.beginPath(); ctx.arc(mx, my, 3.2 * s, 0, Math.PI * 2); ctx.fill();
-          ctx.strokeStyle = 'rgba(255,200,110,.85)'; ctx.lineWidth = 1.2; ctx.stroke();
-        } else if (p >= 1) {
-          // patlama
-          const e = Math.min(1, (t - d0 - fly) / 0.35);
-          if (e < 1) {
-            ctx.fillStyle = `rgba(255,${210 - e * 120},60,${0.9 * (1 - e)})`;
-            ctx.beginPath(); ctx.arc(ex, ey, (5 + e * 16) * s, 0, Math.PI * 2); ctx.fill();
-            ctx.strokeStyle = `rgba(80,40,10,${0.6 * (1 - e)})`; ctx.lineWidth = 2; ctx.stroke();
-          }
-          const d = Math.min(1, (t - d0 - fly) / 0.5);
-          ctx.fillStyle = `rgba(120,100,80,${0.45 * (1 - d)})`;
-          ctx.beginPath(); ctx.arc(ex, ey - d * 12 * s, (8 + d * 18) * s, 0, Math.PI * 2); ctx.fill();
-          // kıvılcımlar
-          for (let k = 0; k < 5; k++) {
-            const a = rr(i * 5 + k) * Math.PI * 2, r = (6 + d * 22) * s;
-            ctx.fillStyle = `rgba(255,190,90,${1 - d})`;
-            ctx.fillRect(ex + Math.cos(a) * r, ey + Math.sin(a) * r - d * 6 * s, 2 * s, 2 * s);
-          }
-        }
-      }
-      if (t > 0.55) this.floatText(ctx, bx, by - 30 * s, f.text, (t - 0.55) / 0.45, '#a3170d');
-    }
-
-    // haritadaki topçu birliği simgesi: tekerlekli top
-    cannonIcon(ctx, x, y, size, color) {
-      ctx.save(); ctx.translate(x, y);
-      const k = size / 16;
-      ctx.scale(k, k);
-      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-      ctx.strokeStyle = 'rgba(248,240,216,.95)'; ctx.lineWidth = 4.5;
-      ctx.beginPath(); ctx.moveTo(-8, 3); ctx.lineTo(8, -5); ctx.stroke();
-      ctx.beginPath(); ctx.arc(-2, 4, 4.5, 0, Math.PI * 2); ctx.stroke();
-      ctx.strokeStyle = color; ctx.lineWidth = 3.2;
-      ctx.beginPath(); ctx.moveTo(-8, 3); ctx.lineTo(8, -5); ctx.stroke();
-      ctx.fillStyle = color;
-      ctx.beginPath(); ctx.arc(-2, 4, 4, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = 'rgba(248,240,216,.9)';
-      ctx.beginPath(); ctx.arc(-2, 4, 1.4, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
-    }
-
     // genişleyip sönen halka
     fxRing(ctx, x, y, t, rgb, r0, r1) {
       if (t <= 0 || t >= 1) return;

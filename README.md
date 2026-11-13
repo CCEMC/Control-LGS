@@ -110,10 +110,6 @@ fiyatı seviye başına artar (6 → 9 → 12₺, Komünizm'de %10 ucuz). Etkile
 - **Çıkış şehri saldırıya uğrarsa:** bir birlik komşu şehre saldırırken çıktığı şehre saldırı başlarsa birlik ikiye bölünür;
   yarısı cephede kalır, yarısı ~1 sn'de geri dönüp şehri savunur (haritada altın bir ok ve kalkan görünür). Bu kural botlar için de geçerlidir.
 - **Ordular:** bir ordunun bulunduğu (ya da oradan saldırıya çıktığı) şehre gönderdiğin ordusuz askerler o orduya katılır.
-- **Topçular:** Monarşi ve Demokrasi 10k, Komünizm 15k topçuyla (başkentte) başlar; Askeri Yönetim'den +1k topçu 3₺.
-  Topçu saldıramaz; bulunduğu şehre komşu düşman şehrine — şehrine saldırı varsa sınırdaki saldıranlara — **her 5 sn'de
-  kendiliğinden ateş eder**: her 1k topçu bir atışta **500 asker** öldürür (fabrikaya bağlı değilse yarısı). Muharebede hasar almaz;
-  bulunduğu şehir düşerse başkente çekilir (füze ise onu da yok eder). Haritada sayının yanında top simgesiyle görünür.
 - **Asker üretimi:** Askeri Yönetim'deki halka, sırada bekleyen asker sayısını gösterir (+3k gibi). Hemen altındaki
   **Sınırlara dağıt** anahtarı açıkken yeni askerler başkentte kalmaz, sınıra yürür: önce saldırı altındaki şehirler, sonra
   savaştığın ülkeye/isyancılara sınır olan şehirler, sonra diğer sınır şehirleri; aynı öncelikte en az askeri olan (yoldakiler dahil) seçilir.

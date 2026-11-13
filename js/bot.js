@@ -46,7 +46,6 @@
       else if (c.limitBuys < 3) game.cmdBuy(cid, 'factoryLimit');
     }
     if (atWar && c.blitzUntil < game.time && c.money >= 14 && rnd() < 0.3) game.cmdBuy(cid, 'blitz');
-    if (atWar && c.money >= 10 && rnd() < 0.15) game.cmdBuyArtillery(cid, 1);
     if (c.money >= 9 && rnd() < 0.22) {
       const k = atWar ? (rnd() < 0.6 ? 'atk' : 'def') : rnd() < 0.5 ? 'def' : 'atk';
       game.cmdUpgrade(cid, k);
@@ -91,7 +90,7 @@
 
   function military(game, cid) {
     const c = game.countries[cid];
-    const idle = game.units.filter((u) => !u.dead && !u.art && u.owner === cid && !u.move && u.city !== null && u.army === null)
+    const idle = game.units.filter((u) => !u.dead && u.owner === cid && !u.move && u.city !== null && u.army === null)
       .sort((a, b) => b.troops - a.troops);
     let actions = 0;
     const attacked = new Set();
@@ -121,23 +120,13 @@
     }
     // 2) Takviye
     const atWar = info.some((x) => x.hostileN > 0);
-    // 3) Topçular: savaşta, düşmanı en kalabalık cephe şehirlerine (şehir başına en fazla ~4k) taşınır
-    if (atWar) {
-      const fronts = info.filter((x) => x.hostileN > 0).sort((a, b) => b.hostileT - a.hostileT);
-      for (const u of game.units.filter((x) => !x.dead && x.art && x.owner === cid && !x.move && x.city !== null)) {
-        if (fronts.some((f) => f.city.id === u.city)) continue;
-        const tgt = fronts.find((f) => game.artAt(f.city.id, cid) < 4000);
-        if (!tgt) break;
-        game.cmdMove(cid, u.id, tgt.city.id, Math.min(u.troops, 4000));
-      }
-    }
     const needs = info.filter((x) => (atWar ? x.hostileN > 0 : x.foreignN > 0)).map((x) => ({
       x, need: (atWar ? x.hostileT * 1.25 + 4000 : x.foreignT * 0.6 + 3000) - x.mine,
     })).filter((n) => n.need > 0).sort((a, b) => b.need - a.need);
     if (!needs.length) return;
     const frontSet = new Set(info.filter((x) => (atWar ? x.hostileN > 0 : x.foreignN > 0)).map((x) => x.city.id));
     let moves = 0;
-    for (const u of game.units.filter((u) => !u.dead && !u.art && u.owner === cid && !u.move && u.city !== null && u.army === null)) {
+    for (const u of game.units.filter((u) => !u.dead && u.owner === cid && !u.move && u.city !== null && u.army === null)) {
       if (moves >= 3 || !needs.length) break;
       if (frontSet.has(u.city) && !(u.city === c.capital)) continue;
       const keep = u.city === c.capital ? Math.max(capKeep, u.troops * (atWar ? 0.15 : 0.3)) : 0;
