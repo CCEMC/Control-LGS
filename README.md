@@ -95,7 +95,10 @@ fiyatı seviye başına artar (6 → 9 → 12₺, Komünizm'de %10 ucuz). Etkile
 
 ## Savaş kuralları (kısaca)
 
-- **Başkent düşerse devlet yıkılır.** Kalan şehirler isyancılara geçer, hazinenin yarısı fatihe ganimet olur.
+- **Başkent düşerse devlet yıkılır.** Topraklarının **%75'i** (başkent dahil, fatihe en yakın şehirler) **fatihe geçer**,
+  fatihten **en uzak %25'i isyancılara** kalır; hazinenin yarısı fatihe ganimet olur. Fatihe geçen şehirlerin fabrikaları ve
+  hava korumaları kalır, yenik askerler silah bırakır; isyancılara kalan şehirlerdeki askerlerin yarısı isyancılara katılır.
+  (Başkenti isyancılar alırsa tüm şehirler isyancılara geçer.)
 - Saldırıda yürüyüş yoktur: komşu düşman şehrine saldırı emri verince çatışma **hemen sınırda** başlar ve şehir, senin şehrinle ortak sınırından
   içeri doğru renk değiştirir. **İşgal hızı birliğin büyüklüğüne bağlıdır:** süre ≈ (savunma + 4k) ÷ (saldırı gücü × 0,03); 5k'lık savunmayı 30k asker ~10 sn'de,
   12k asker ~25 sn'de alır (5–45 sn). İki taraf da çatışma boyunca eriyerek kayıp verir. Savunmayı hiç geçemeyecek küçük bir kuvvetle (≤3k) saldırı başlamaz.

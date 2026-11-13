@@ -513,7 +513,7 @@
           const s = g.stats && g.stats[id];
           const by = s && s.deadBy !== null && s.deadBy !== undefined ? g.countries[s.deadBy] : null;
           body = `<div class="dp-dead">☠ Bu devlet ${s && s.deadAt !== null ? fmtTime(s.deadAt) + ' anında ' : ''}yıkıldı${by ? `, <b>${esc(by.name)}</b> tarafından` : ''}.
-            <small>Başkenti düşen devlet çöker; kalan şehirleri isyancılara geçer.</small></div>`;
+            <small>Başkenti düşen devletin topraklarının %75'i fatihe geçer, en uzak %25'i isyancılara kalır.</small></div>`;
         } else {
           // ilişki ölçeği (-100 … +100)
           const relm = `<div class="relm"><div class="relm-h"><span>İlişki</span><b>${rel > 0 ? '+' : ''}${rel} · ${this.relWord(rel)}</b></div>
@@ -1154,7 +1154,8 @@
   // Nasıl oynanır (giriş ekranında ve oyun menüsünde)
   G.VERSION_LABEL = 'v1.0';
   G.HELP_HTML = `<div class="help">
-    <section><h4>🎯 Amaç</h4><p>Rakip devletlerin <b>başkentlerini</b> ele geçir. Başkenti düşen devlet çöker, kalan şehirleri isyancılara geçer.
+    <section><h4>🎯 Amaç</h4><p>Rakip devletlerin <b>başkentlerini</b> ele geçir. Başkenti düşen devlet çöker: topraklarının <b>%75'i sana geçer</b>,
+      senden en uzak %25'i isyancılara kalır.
       Haritada senden başka yalnızca müttefiklerin kalınca kazanırsın.</p></section>
     <section><h4>🏭 Başlangıç ve ekonomi</h4><p>Önce fabrikalarını kuracağın kendi şehrini seç. Her fabrika <b>15 sn'de 1₺</b> verir, yenisi 6 sn'de kurulur.
       Kendi toprağın üzerinden hiçbir fabrikaya bağlı olmayan şehirlerdeki askerler <b>❗ %50 zayıf ve yavaştır</b>.</p></section>

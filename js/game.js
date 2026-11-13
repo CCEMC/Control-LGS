@@ -17,6 +17,8 @@
     ideoUpMax: 3,
     // Saldıran birliğin çıktığı şehir saldırıya uğrarsa birliğin yarısı bu sürede şehre geri döner (sınırdan, yarım yol)
     recallTime: 1.2,
+    // Başkenti savaşla düşen devletin topraklarının (başkent dahil) bu oranı fatihe geçer; en uzak kalanlar isyancılara
+    conquestShare: 0.75,
   };
 
   const IDEO = {
@@ -1130,7 +1132,8 @@
       this.say(null, `${c.name} başkentini kaybetti! Yeni başkent: ${mine[0].name}`, 'war');
     }
 
-    // capitalCity verilirse: başkent savaşta düştü. Kalan şehirler isyancılara geçer, hazinenin yarısı fatihe ganimet olur.
+    // capitalCity verilirse: başkent savaşta düştü. Topraklarının %75'i (başkent dahil, fatihe en yakın olanlar) fatihe,
+    // en uzak %25'i isyancılara geçer; hazinenin yarısı fatihe ganimet olur. Fatih isyancıysa tüm şehirler isyancılara kalır.
     eliminate(cid, by, capitalCity) {
       const c = this.countries[cid];
       if (!c.alive) return;
@@ -1139,29 +1142,60 @@
         s.deadAt = this.time; s.deadBy = by === undefined ? null : by;
         if (by !== undefined && by !== CFG.REBEL && by !== cid) this.stats[by].destroyed++;
       }
-      let loot = 0;
+      let loot = 0, annexed = [], rebelCities = [];
+      const conqueror = capitalCity && by !== undefined && by !== CFG.REBEL && by !== cid && this.countries[by].alive ? by : null;
       if (capitalCity) {
-        if (by !== undefined && by !== CFG.REBEL) {
+        if (conqueror !== null) {
           loot = Math.floor(c.money * 0.5 * 10) / 10;
           this.countries[by].money = Math.round((this.countries[by].money + loot) * 100) / 100;
         }
-        const rebelCities = [];
-        for (const city of this.cities) {
-          if (city.owner !== cid) continue;
-          city.owner = CFG.REBEL; city.factories = 0; city.building = []; city.cityDef = false; city.airDef = false;
-          rebelCities.push(city.id);
+        const remaining = this.cities.filter((ci) => ci.owner === cid);
+        if (conqueror !== null && remaining.length) {
+          // Fatihe uzaklık: fatihin fetihten önceki topraklarından, yıkılan ülkenin toprakları üzerinden adım sayısı;
+          // eşitlikte o topraklara kuş uçuşu uzaklık. Yakın olanlar fatihe, en uzaklar isyancılara.
+          // (Fatihin eski toprağı komşu değilse — ör. uçakla çıkarma — düşen başkentten ölçülür.)
+          let home = this.cities.filter((ci) => ci.owner === by && ci.id !== capitalCity.id);
+          if (!remaining.some((ci) => ci.neighbors.some((n) => this.cities[n].owner === by && n !== capitalCity.id))) home = [capitalCity];
+          const homeIds = new Set(home.map((ci) => ci.id));
+          const dist = new Map(), q = [];
+          for (const ci of remaining) if (ci.neighbors.some((n) => homeIds.has(n))) { dist.set(ci.id, 1); q.push(ci.id); }
+          for (let i = 0; i < q.length; i++) {
+            const a = q[i];
+            for (const n of this.cities[a].neighbors) {
+              if (this.cities[n].owner !== cid || dist.has(n)) continue;
+              dist.set(n, dist.get(a) + 1); q.push(n);
+            }
+          }
+          const air = (ci) => { let d = Infinity; for (const h of home) d = Math.min(d, Math.hypot(ci.x - h.x, ci.y - h.y)); return d; };
+          const key = (ci) => (dist.has(ci.id) ? dist.get(ci.id) : 1e3) * 1e6 + air(ci);
+          remaining.sort((a, b) => key(a) - key(b));
+          const share = Math.max(0, Math.min(remaining.length, Math.round((remaining.length + 1) * CFG.conquestShare) - 1));
+          annexed = remaining.slice(0, share);
+          rebelCities = remaining.slice(share).map((ci) => ci.id);
+        } else rebelCities = remaining.map((ci) => ci.id);
+        // fatihe geçen şehirler: fabrikalar ve hava koruması kalır, inşaat ve şehir savunması biter
+        for (const ci of annexed) { ci.owner = by; ci.building = []; ci.cityDef = false; }
+        for (const id of rebelCities) {
+          const ci = this.cities[id];
+          ci.owner = CFG.REBEL; ci.factories = 0; ci.building = []; ci.cityDef = false; ci.airDef = false;
         }
-        // halk ayaklanır: kalan şehirlerdeki askerlerin yarısı isyancılara katılır, yarısı dağılır
+        // halk ayaklanır: isyancılara kalan şehirlerdeki askerlerin yarısı isyancılara katılır, yarısı dağılır
+        // (fatihe geçen şehirlerdeki yenik askerler silah bırakır)
+        const rebelSet = new Set(rebelCities), annexSet = new Set(annexed.map((ci) => ci.id));
         for (const u of this.units) {
-          if (u.dead || u.owner !== cid || u.city === null || u.move || !rebelCities.includes(u.city)) continue;
+          if (u.dead || u.owner !== cid || u.city === null || u.move || !rebelSet.has(u.city)) continue;
           u.owner = CFG.REBEL; u.army = null; u.troops = Math.round(u.troops * 0.5);
         }
-        // müttefik askerler artık düşman olan bu şehirlerden başkentlerine döner
+        // başka ülkelerin askerleri artık düşman olan şehirlerden başkentlerine döner
         for (const u of this.units.slice()) {
-          if (u.dead || u.owner === cid || u.owner === CFG.REBEL || u.city === null || u.move || !rebelCities.includes(u.city)) continue;
-          this.sendHome(u);
+          if (u.dead || u.owner === cid || u.city === null || u.move) continue;
+          if ((rebelSet.has(u.city) && u.owner !== CFG.REBEL) || (annexSet.has(u.city) && !this.friendly(u.owner, by))) this.sendHome(u);
         }
         for (const id of rebelCities) this.mergeCity(id);
+        if (annexed.length) {
+          if (this.stats) this.stats[by].captured += annexed.length;
+          for (const ci of annexed) this.emit({ type: 'fx', kind: 'capture', city: ci.id });
+        }
       }
       c.alive = false; c.capital = -1; c.queue = 0;
       for (const u of this.units) if (u.owner === cid) u.dead = true;
@@ -1173,7 +1207,10 @@
       this.version++;
       const byName = by !== undefined && by !== CFG.REBEL ? this.countries[by].name : null;
       if (capitalCity) {
-        this.say(null, `☠ ${c.name} YIKILDI! Başkent ${capitalCity.name}${byName ? ', ' + byName + ' tarafından' : ''} ele geçirildi; kalan şehirleri isyancılar aldı.${loot ? ' Ganimet: ' + U.fmtMoney(loot) : ''}`, 'war');
+        const split = conqueror !== null
+          ? ` Topraklarının %${Math.round(CFG.conquestShare * 100)}'i (${annexed.length + 1} şehir) ${byName} ülkesine geçti${rebelCities.length ? `, en uzak ${rebelCities.length} şehir isyancılara kaldı` : ''}.`
+          : rebelCities.length ? ' Kalan şehirlerini isyancılar aldı.' : '';
+        this.say(null, `☠ ${c.name} YIKILDI! Başkent ${capitalCity.name}${byName ? ', ' + byName + ' tarafından' : ''} ele geçirildi.${split}${loot ? ' Ganimet: ' + U.fmtMoney(loot) : ''}`, 'war');
       } else {
         this.say(null, `☠ ${c.name} YIKILDI!${byName ? ' (' + byName + ' tarafından)' : ''}`, 'war');
       }
