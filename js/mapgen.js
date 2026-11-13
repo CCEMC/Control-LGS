@@ -71,22 +71,50 @@
   function voronoi(pts, W, H) {
     const n = pts.length;
     const cells = new Array(n);
-    const idx = [...Array(n).keys()];
+    const px = new Float64Array(n), py = new Float64Array(n), d2 = new Float64Array(n);
+    for (let i = 0; i < n; i++) { px[i] = pts[i][0]; py[i] = pts[i][1]; }
+    const cmp = (a, b) => d2[a] - d2[b];
+    // Noktaların çoğu yakın komşularda biter; önce dar bir yarıçapı sırala, gerekirse devamını ekle
+    const T = 2.8 * Math.sqrt((W * H) / Math.max(1, n));
+    const T2 = T * T;
     for (let i = 0; i < n; i++) {
-      const pi = pts[i];
-      const order = idx.slice().sort((a, b) =>
-        (pts[a][0] - pi[0]) ** 2 + (pts[a][1] - pi[1]) ** 2 - ((pts[b][0] - pi[0]) ** 2 + (pts[b][1] - pi[1]) ** 2));
+      const pix = px[i], piy = py[i];
+      const near = [];
+      for (let k = 0; k < n; k++) {
+        const dx = px[k] - pix, dy = py[k] - piy;
+        const dd2 = dx * dx + dy * dy;
+        d2[k] = dd2;
+        if (k !== i && dd2 <= T2) near.push(k);
+      }
+      near.sort(cmp);
       let poly = [[0, 0], [W, 0], [W, H], [0, H]], tags = [-1, -1, -1, -1];
-      for (const j of order) {
-        if (j === i) continue;
-        const pj = pts[j];
-        const dx = pj[0] - pi[0], dy = pj[1] - pi[1];
-        const dd = Math.hypot(dx, dy);
+      const polyMaxR = () => {
         let maxR = 0;
-        for (const v of poly) { const r = Math.hypot(v[0] - pi[0], v[1] - pi[1]); if (r > maxR) maxR = r; }
-        if (dd > 2 * maxR + 1) break;
-        const mx = (pi[0] + pj[0]) / 2, my = (pi[1] + pj[1]) / 2;
-        [poly, tags] = clip(poly, tags, dx, dy, dx * mx + dy * my, j);
+        for (let vi = 0; vi < poly.length; vi++) {
+          const v = poly[vi], r = Math.hypot(v[0] - pix, v[1] - piy);
+          if (r > maxR) maxR = r;
+        }
+        return maxR;
+      };
+      const clipList = (list) => {
+        for (let m = 0; m < list.length; m++) {
+          const j = list[m];
+          const dx = px[j] - pix, dy = py[j] - piy;
+          if (Math.hypot(dx, dy) > 2 * polyMaxR() + 1) return true;
+          const mx = (pix + px[j]) / 2, my = (piy + py[j]) / 2;
+          [poly, tags] = clip(poly, tags, dx, dy, dx * mx + dy * my, j);
+        }
+        return false;
+      };
+      if (!clipList(near)) {
+        const cut = 2 * polyMaxR() + 1;
+        if (T <= cut + 1e-6) {
+          const cut2 = (cut + 1) * (cut + 1);
+          const rest = [];
+          for (let k = 0; k < n; k++) if (k !== i && d2[k] > T2 && d2[k] <= cut2) rest.push(k);
+          rest.sort(cmp);
+          clipList(rest);
+        }
       }
       // sıfır uzunluklu kenarları temizle
       for (let k = poly.length - 1; k >= 0 && poly.length > 3; k--) {

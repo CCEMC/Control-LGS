@@ -207,25 +207,44 @@
     // Bağlantısı kopan şehirlerdeki askerler (u.weak) %50 zayıf ve yavaştır.
     refreshSupply() {
       const n = this.cities.length;
-      if (!this.supply || this.supply.length !== n) this.supply = new Uint8Array(n);
-      const sup = this.supply;
-      sup.fill(0);
-      const q = [];
-      for (const c of this.cities) if (c.factories > 0 && c.owner !== CFG.REBEL) { sup[c.id] = 1; q.push(c.id); }
-      for (let i = 0; i < q.length; i++) {
-        const c = this.cities[q[i]];
-        for (const nb of c.neighbors) {
-          if (sup[nb] || this.cities[nb].owner !== c.owner) continue;
-          sup[nb] = 1; q.push(nb);
+      if (!this.supply || this.supply.length !== n) {
+        this.supply = new Uint8Array(n);
+        this._supOwner = new Int8Array(n);
+        this._supOwner.fill(-2);
+        this._supFac = new Uint8Array(n);
+        this._supQ = new Int32Array(n);
+      }
+      const sup = this.supply, supOwner = this._supOwner, supFac = this._supFac, cities = this.cities;
+      let dirty = false;
+      for (let i = 0; i < n; i++) {
+        const c = cities[i], hf = c.factories > 0 ? 1 : 0;
+        if (supOwner[i] !== c.owner || supFac[i] !== hf) { dirty = true; break; }
+      }
+      if (dirty) {
+        sup.fill(0);
+        const q = this._supQ;
+        let head = 0, tail = 0;
+        for (let i = 0; i < n; i++) {
+          const c = cities[i], hf = c.factories > 0 ? 1 : 0;
+          supOwner[i] = c.owner; supFac[i] = hf;
+          if (hf && c.owner !== CFG.REBEL) { sup[i] = 1; q[tail++] = i; }
+        }
+        while (head < tail) {
+          const c = cities[q[head++]], nbs = c.neighbors, ow = c.owner;
+          for (let j = 0; j < nbs.length; j++) {
+            const nb = nbs[j];
+            if (!sup[nb] && cities[nb].owner === ow) { sup[nb] = 1; q[tail++] = nb; }
+          }
         }
       }
-      for (const u of this.units) {
+      for (let i = 0; i < this.units.length; i++) {
+        const u = this.units[i];
         if (u.dead) continue;
         if (u.owner === CFG.REBEL) { u.weak = false; continue; }
         const ref = u.move ? u.move.from : u.city;
         if (ref === null || ref === undefined) continue;
         // sadece KENDİ toprağın üzerinden fabrikaya bağlı şehirler beslenir (müttefik toprağı sayılmaz)
-        const own = this.cities[ref].owner === u.owner;
+        const own = cities[ref].owner === u.owner;
         if (u.move) { if (own) u.weak = !sup[ref]; } // yoldaki birlik çıktığı şehrin durumunu taşır
         else u.weak = !(own && sup[ref] === 1);
       }
@@ -1309,7 +1328,11 @@
         this.emit({ type: 'fx', kind: 'explosion', city: city.id });
         this.say([p.owner, city.owner], `💥 Füze ${city.name} şehrini vurdu! Tüm askerler ve yapılar yok oldu.`, 'war');
       }
-      this.projectiles = this.projectiles.filter((p) => !p.done);
+      if (this.projectiles.length) {
+        let anyDone = false;
+        for (let i = 0; i < this.projectiles.length; i++) if (this.projectiles[i].done) { anyDone = true; break; }
+        if (anyDone) this.projectiles = this.projectiles.filter((p) => !p.done);
+      }
 
       // teklifler
       for (const p of this.proposals.slice()) {
@@ -1331,9 +1354,18 @@
       for (const c of this.countries) if (c.isBot && c.alive) G.Bot.update(this, c.id, dt);
 
       // temizlik
-      for (const u of this.units) if (!u.dead && u.troops < 50) u.dead = true;
-      if (this.units.some((u) => u.dead)) this.units = this.units.filter((u) => !u.dead);
-      this.armies = this.armies.filter((a) => this.units.some((u) => u.army === a.id));
+      let anyDead = false;
+      for (let i = 0; i < this.units.length; i++) {
+        const u = this.units[i];
+        if (!u.dead && u.troops < 50) u.dead = true;
+        if (u.dead) anyDead = true;
+      }
+      if (anyDead) this.units = this.units.filter((u) => !u.dead);
+      if (this.armies.length) {
+        const active = new Set();
+        for (let i = 0; i < this.units.length; i++) if (this.units[i].army !== null) active.add(this.units[i].army);
+        if (active.size < this.armies.length) this.armies = this.armies.filter((a) => active.has(a.id));
+      }
       this.checkGameOver();
     }
 
@@ -1484,7 +1516,7 @@
         c.isPlayer = i === d.playerId;
         if (d.countries[i].isHuman === undefined) c.isHuman = i === d.playerId; // eski kayıtlar
       });
-      g.units = d.units.filter((u) => !u.art); // kaldırılan topçu birlikleri eski kayıtlardan çıkarılır
+      g.units = (d.units || []).filter((u) => !u.art);
       g.wars = new Map(d.wars.map((w) => [g.warKey(w.a, w.b), w]));
       g.alliances = d.alliances; g.proposals = d.proposals; g.armies = d.armies; g.projectiles = d.projectiles; g.rel = d.rel;
       if (Array.isArray(d.stats)) g.stats = d.stats;

@@ -13,17 +13,23 @@
   }
 
   function frontInfo(game, cid) {
+    const cities = game.cities;
+    const ownTroops = new Float64Array(cities.length);
+    for (let i = 0; i < game.units.length; i++) {
+      const u = game.units[i];
+      if (!u.dead && u.city !== null && !u.move && u.owner === cities[u.city].owner) ownTroops[u.city] += u.troops;
+    }
     const res = [];
-    for (const city of game.cities) {
+    for (const city of cities) {
       if (city.owner !== cid) continue;
       let hostileT = 0, foreignT = 0, hostileN = 0, foreignN = 0;
       for (const n of city.neighbors) {
-        const o = game.cities[n].owner;
+        const o = cities[n].owner;
         if (o === cid) continue;
-        if (game.hostile(cid, o)) { hostileN++; hostileT += game.troopsAt(n, o); }
-        else if (!game.isAlly(cid, o)) { foreignN++; foreignT += game.troopsAt(n, o); }
+        if (game.hostile(cid, o)) { hostileN++; hostileT += ownTroops[n]; }
+        else if (!game.isAlly(cid, o)) { foreignN++; foreignT += ownTroops[n]; }
       }
-      res.push({ city, hostileT, foreignT, hostileN, foreignN, mine: game.troopsAt(city.id, cid) });
+      res.push({ city, hostileT, foreignT, hostileN, foreignN, mine: ownTroops[city.id] });
     }
     return res;
   }
