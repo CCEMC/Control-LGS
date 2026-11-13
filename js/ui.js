@@ -301,8 +301,7 @@
           const maxK = Math.max(1, Math.ceil(sel.troops / 1000));
           bar.innerHTML = `<div class="bar-row"><span>Seçili birlik: <b id="selInfo"></b></span>
             <label class="amt">Taşınacak miktar <input type="range" id="amtRange" min="1" max="${maxK}" step="1" value="${Math.min(this.amountK, maxK)}"> <b id="amtVal"></b></label>${cancelBtn}</div>
-            <small>${sel.art ? `Topçu: hedef olarak kendi şehrine ${this.mode === 'pc' ? 'tıkla' : 'dokun'} (taşı). Komşu düşmana her 5 sn'de kendiliğinden ateş eder.`
-              : `Hedef şehre ${this.mode === 'pc' ? 'tıkla' : 'dokun'}: kendi şehrin = taşı · komşu düşman = saldır`}</small>`;
+            <small>Hedef şehre ${this.mode === 'pc' ? 'tıkla' : 'dokun'}: kendi şehrin = taşı · komşu düşman = saldır</small>`;
         } else bar.innerHTML = '';
       }
       // Her seferinde: seçim iptal edilince (barKey sıfırlanıp yine '' kalınca) çubuk açık kalıyordu
@@ -317,7 +316,7 @@
         const maxK = Math.max(1, Math.ceil(sel.troops / 1000));
         if (r && +r.max !== maxK) { r.max = maxK; }
         if (this.amountK > maxK) this.amountK = maxK;
-        const info = this.$('selInfo'); if (info) info.textContent = `${fmtK(sel.troops)}${sel.art ? ' topçu' : ''} ·${g.cities[sel.city].name}${sel.weak ? ' · ❗ fabrikaya bağlı değil (−%50)' : ''}`;
+        const info = this.$('selInfo'); if (info) info.textContent = `${fmtK(sel.troops)} · ${g.cities[sel.city].name}${sel.weak ? ' · ❗ fabrikaya bağlı değil (−%50)' : ''}`;
         const v = this.$('amtVal'); if (v) v.textContent = fmtK(Math.min(sel.troops, this.amountK * 1000));
       } else if (this.barKey.startsWith('target') && this.targeting && this.targeting.info) {
         const el = this.$('pickInfo'); if (el) el.textContent = this.targeting.info();
@@ -380,9 +379,9 @@
       const g = this.game, c = g.cities[cityId], o = g.countries[c.owner];
       const isCap = g.countries.some((k) => k.alive && k.capital === cityId);
       const units = g.idleUnitsAt(cityId);
-      const byOwner = new Map(), artBy = new Map();
-      for (const u of units) { if (!byOwner.has(u.owner)) byOwner.set(u.owner, 0); if (u.art) artBy.set(u.owner, (artBy.get(u.owner) || 0) + u.troops); else byOwner.set(u.owner, byOwner.get(u.owner) + u.troops); }
-      const troops = [...byOwner].map(([k, v]) => `<div><span class="sw" style="background:${g.countries[k].color}"></span>${esc(g.countries[k].name)}: <b>${fmtK(v)}</b>${artBy.get(k) ? ` <small>+ 💣 ${fmtK(artBy.get(k))} topçu</small>` : ''}</div>`).join('') || '<div><i>asker yok</i></div>';
+      const byOwner = new Map();
+      for (const u of units) byOwner.set(u.owner, (byOwner.get(u.owner) || 0) + u.troops);
+      const troops = [...byOwner].map(([k, v]) => `<div><span class="sw" style="background:${g.countries[k].color}"></span>${esc(g.countries[k].name)}: <b>${fmtK(v)}</b></div>`).join('') || '<div><i>asker yok</i></div>';
       const inc = g.incomingAttacks(cityId).length;
       const struct = [];
       if (c.factories) struct.push(`${c.factories} fabrika`);
@@ -596,7 +595,7 @@
       const defM = (1 + P.defLvl * G.CFG.upgradeStep) * g.ideo(me).def;
       const hero = `<div class="mhero">
           <div class="mh-main"><span class="mh-ic">${icon('helmet')}</span><div><small>Toplam asker</small><b>${this.L(() => fmtK(g.totalTroops(me)))}</b>
-            <span class="mh-sub">⚔ ${this.L(() => fmtK(fronts()))} cephede · <span class="wk">❗ ${this.L(() => fmtK(weak()))} zayıf</span> · 💣 ${this.L(() => fmtK(g.totalArt(me)))} topçu</span></div></div>
+            <span class="mh-sub">⚔ ${this.L(() => fmtK(fronts()))} cephede · <span class="wk">❗ ${this.L(() => fmtK(weak()))} zayıf</span></span></div></div>
           <div class="mh-pow"><div class="atk">${icon('sword')}<span><small>Saldırı</small><b>${this.L(() => '×' + g.atkMult(me, -1).toFixed(2))}</b></span></div>
             <div class="def">${icon('shield')}<span><small>Savunma</small><b>×${defM.toFixed(2)}</b></span></div></div></div>`;
       // asker üretimi: halka gösterge + sıra düğmeleri + sınırlara dağıt
@@ -617,15 +616,6 @@
               <small class="pr-note">${this.L(() => (P.queue > 0 ? `Sıra ${Math.max(0, Math.ceil(P.queue * g.troopTime(me) - P.prodTimer))} sn'de biter` : 'Üretim yok'))} ·
                 ${this.L(() => (P.autoDist ? 'yeni askerler sınırlara yürür' : 'yeni askerler başkentte doğar'))}</small>
             </div></div></div>`;
-      // topçular
-      const ap = g.price(me, 'artillery');
-      const artCard = `<div class="mcard artc">
-          <div class="mc-h">${icon('target')}<b>Topçular</b><span class="mc-r">1k topçu → her 5 sn'de 500 asker</span></div>
-          <div class="art-body"><div class="art-n">${icon('target')}<b>${this.L(() => fmtK(g.totalArt(me)))}</b><small>topçu</small></div>
-            <p>Bulunduğu şehre komşu düşman şehrine — şehrine saldırı varsa saldıranlara — <b>her 5 sn'de kendiliğinden ateş eder</b>,
-              muharebede hasar almaz. Saldıramaz; cephedeki kendi şehirlerine taşı.</p>
-            <div class="qbtns"><button class="btn" data-act="art" data-n="1" ${P.money < ap ? 'disabled' : ''}>+1k · ${fmtMoney(ap)}</button>
-              <button class="btn" data-act="art" data-n="5" ${P.money < ap ? 'disabled' : ''}>+5k</button></div></div></div>`;
       // ekipman: saldırı ve savunma kartları
       const eq = (kind, label, ic) => {
         const lvl = kind === 'atk' ? P.atkLvl : P.defLvl, max = G.CFG.maxUpgrade;
@@ -661,7 +651,7 @@
         ${armies.length ? `<div class="army-grid">${armies.map(armyCard).join('')}</div><small class="note">Ordunun bulunduğu şehre gönderdiğin askerler orduya katılır.</small>`
           : '<div class="army-empty">Ordular kendi kendine savaşır: <b>Taarruz</b> ordusu düşman şehirlerini işgal eder, <b>Savunma</b> ordusu sınırlarını korur ve kaybedilen şehirleri geri alır. <b>+ Ordu Kur</b>\'a bas, birliklerini haritada işaretle.</div>'}</div>`;
       const tap = this.mode === 'pc' ? 'tıkla' : 'dokun';
-      return `<div class="mil scroll">${warn}${hero}${prod}${artCard}${equip}${ideoSect}${armySect}
+      return `<div class="mil scroll">${warn}${hero}${prod}${equip}${ideoSect}${armySect}
         <p class="note">Birliğe ${tap} → miktarı seç → hedef şehre ${tap}.${this.mode === 'pc' ? ' Q: iptal.' : ''}</p></div>`;
     }
 
@@ -791,11 +781,6 @@
           for (let i = 0; i < n; i++) { r = g.cmdQueueTroops(me, dir); if (r.err) break; done++; }
           if (done > 0 && n > 1 && r && r.err) this.toast(`Para yettiği kadar sıraya eklendi: +${done}k`, 'info');
           res(done > 0 ? { ok: true } : r);
-          break;
-        }
-        case 'art': {
-          const r = g.cmdBuyArtillery(me, +b.dataset.n || 1);
-          res(r, r.ok ? `+${r.bought}k topçu başkentte hazır.` : null);
           break;
         }
         case 'autodist': {
@@ -1182,8 +1167,6 @@
     <section><h4>⚔ Asker ve savaş</h4><p>Birliğe (haritadaki asker sayısına) dokun, miktarı seç, hedef şehre dokun: kendi şehrine taşır, <b>komşu düşman şehrine saldırır</b>.
       Saldırı sınırda hemen başlar; büyük birlik şehri daha çabuk alır. Bir ülkeye saldırmak için önce Diplomasi'den <b>savaş hakkı</b> alıp (20 sn) savaş ilan et.
       Saldırdığın şehrin çıkış şehri saldırıya uğrarsa birliğin yarısı savunmaya döner.</p></section>
-    <section><h4>💣 Topçular</h4><p>Saldıramazlar; komşu düşman şehrine (şehrine saldırı varsa saldıranlara) <b>her 5 sn'de kendiliğinden ateş ederler</b>.
-      Her 1k topçu bir atışta 500 asker öldürür, muharebede hasar almaz. Cepheye taşı; Askeri Yönetim'den +1k topçu 3₺.</p></section>
     <section><h4>🤝 Diplomasi</h4><p>Talep, destek ve takas teklif et; ittifak kur ya da bir ittifaka katıl; barış teklif et ya da teslim ol.
       İlişkiler tekliflerin kabul edilme şansını etkiler. Müttefiklerini savaşa çağırabilirsin.</p></section>
     <section><h4>🎖 Askeri yönetim ve mağaza</h4><p>Asker üret (+1k = 1₺), <b>Sınırlara dağıt</b> ile yeni askerleri cepheye yolla, saldırı/savunma geliştir,

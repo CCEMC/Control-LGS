@@ -19,22 +19,19 @@
     recallTime: 1.2,
     // Başkenti savaşla düşen devletin topraklarının (başkent dahil) bu oranı fatihe geçer; en uzak kalanlar isyancılara
     conquestShare: 0.75,
-    // Topçu: komşu düşman şehrine (ya da şehrine saldıranlara) uzaktan ateş eder, muharebede hasar almaz.
-    // Her 1k topçu bir atışta 500 asker öldürür (topçu başına 0.5); atış aralığı 5 sn.
-    artInterval: 5, artKill: 0.5,
   };
 
   const IDEO = {
-    komunizm: { key: 'komunizm', name: 'Komünizm', troops: 90000, art: 15000, price: 0.9, atk: 1, def: 1, war: 1, factories: 2, rebelAtk: 1.05,
-      perks: ['%10 daha ucuz fiyatlar', 'İsyancılara karşı +%5 saldırı', '90k asker + 15k topçu ile başlar'] },
-    demokrasi: { key: 'demokrasi', name: 'Demokrasi', troops: 75000, art: 10000, price: 1, atk: 1, def: 1.2, war: 0.5, factories: 2, rebelAtk: 1,
-      perks: ['+%20 savunma', 'Savaş ilan hakkı %50 daha ucuz', '75k asker + 10k topçu ile başlar'] },
-    monarsi: { key: 'monarsi', name: 'Monarşi', troops: 85000, art: 10000, price: 1, atk: 1.1, def: 1, war: 1, factories: 3, rebelAtk: 1,
-      perks: ['+%10 saldırı', '3 fabrika ile başlar', '85k asker + 10k topçu ile başlar'] },
+    komunizm: { key: 'komunizm', name: 'Komünizm', troops: 90000, price: 0.9, atk: 1, def: 1, war: 1, factories: 2, rebelAtk: 1.05,
+      perks: ['%10 daha ucuz fiyatlar', 'İsyancılara karşı +%5 saldırı', '90k asker ile başlar'] },
+    demokrasi: { key: 'demokrasi', name: 'Demokrasi', troops: 75000, price: 1, atk: 1, def: 1.2, war: 0.5, factories: 2, rebelAtk: 1,
+      perks: ['+%20 savunma', 'Savaş ilan hakkı %50 daha ucuz', '75k asker ile başlar'] },
+    monarsi: { key: 'monarsi', name: 'Monarşi', troops: 85000, price: 1, atk: 1.1, def: 1, war: 1, factories: 3, rebelAtk: 1,
+      perks: ['+%10 saldırı', '3 fabrika ile başlar', '85k asker ile başlar'] },
   };
 
   const PRICES = { warRight: 5, alliance: 5, leave: 5, upgrade: 5, troop: 1, blitz: 5, cityDef: 5, factory: 12, factoryLimit: 5,
-    plane: 10, rebellion: 40, missile: 35, airDef: 20, ideoUp: 6, artillery: 3 };
+    plane: 10, rebellion: 40, missile: 35, airDef: 20, ideoUp: 6 };
 
   // İdeolojiye özel geliştirmeler: her ideolojinin kendine ait 3 geliştirmesi var, her biri en fazla 3 seviye.
   // Fiyat seviye başına artar (6 → 9 → 12, ideolojinin fiyat çarpanıyla). Etkiler seviye başınadır.
@@ -174,11 +171,9 @@
     // inşaatı süren fabrikalar (6 sn sürer; bitene kadar gelir ve ikmal vermez)
     factoriesPending(cid) { let s = 0; for (const c of this.cities) if (c.owner === cid) s += c.building.length; return s; }
     factorySlots(city) { return city.factories + city.building.length; }
-    totalTroops(cid) { let s = 0; for (const u of this.units) if (!u.dead && u.owner === cid && !u.art) s += u.troops; return s; }
-    totalArt(cid) { let s = 0; for (const u of this.units) if (!u.dead && u.owner === cid && u.art) s += u.troops; return s; }
-    artAt(cityId, owner) { let s = 0; for (const u of this.units) if (!u.dead && u.art && u.city === cityId && !u.move && (owner === undefined || u.owner === owner)) s += u.troops; return s; }
+    totalTroops(cid) { let s = 0; for (const u of this.units) if (!u.dead && u.owner === cid) s += u.troops; return s; }
     idleUnitsAt(cityId) { return this.units.filter((u) => !u.dead && u.city === cityId && !u.move); }
-    troopsAt(cityId, owner) { let s = 0; for (const u of this.units) if (!u.dead && !u.art && u.city === cityId && !u.move && (owner === undefined || u.owner === owner)) s += u.troops; return s; }
+    troopsAt(cityId, owner) { let s = 0; for (const u of this.units) if (!u.dead && u.city === cityId && !u.move && (owner === undefined || u.owner === owner)) s += u.troops; return s; }
     price(cid, key) {
       const id = this.ideo(cid);
       let p = PRICES[key] * id.price;
@@ -311,7 +306,7 @@
     }
     addTroops(owner, cityId, troops, army) {
       army = army === undefined ? null : army;
-      const u = this.units.find((x) => !x.dead && !x.art && x.city === cityId && !x.move && x.owner === owner && x.army === army);
+      const u = this.units.find((x) => !x.dead && x.city === cityId && !x.move && x.owner === owner && x.army === army);
       if (u) { u.troops += troops; return u; }
       return this.newUnit(owner, cityId, troops, army);
     }
@@ -319,7 +314,7 @@
       const seen = new Map();
       for (const u of this.units) {
         if (u.dead || u.city !== cityId || u.move) continue;
-        const k = u.owner + ':' + u.army + (u.art ? ':art' : '');
+        const k = u.owner + ':' + u.army;
         const prev = seen.get(k);
         if (prev) { prev.troops += u.troops; u.dead = true; } else seen.set(k, u);
       }
@@ -387,66 +382,6 @@
       let left = total;
       for (const id of ids) { if (id === c.capital) continue; this.addTroops(k, id, per); left -= per; }
       this.addTroops(k, c.capital, left);
-      // topçular başkentte başlar (Monarşi/Demokrasi 10k, Komünizm 15k)
-      if (this.ideo(k).art) this.addArt(k, c.capital, this.ideo(k).art);
-    }
-    // topçu birliği ekle (aynı şehirdeki topçularla birleşir)
-    addArt(owner, cityId, n) {
-      const u = this.units.find((x) => !x.dead && x.art && x.city === cityId && !x.move && x.owner === owner);
-      if (u) { u.troops += n; return u; }
-      const nu = this.newUnit(owner, cityId, n, null);
-      nu.art = true; nu.artT = this.rnd() * CFG.artInterval; // ilk atışlar aynı ana denk gelmesin
-      return nu;
-    }
-
-    // +1k topçu (başkentte hazır olur)
-    cmdBuyArtillery(cid, n) {
-      const c = this.countries[cid];
-      n = Math.max(1, Math.min(10, Math.round(n || 1)));
-      if (c.capital < 0) return { err: 'Başkentin yok' };
-      let bought = 0;
-      for (let i = 0; i < n; i++) { if (!this.pay(cid, this.price(cid, 'artillery'))) break; bought++; }
-      if (!bought) return { err: 'Yetersiz para' };
-      this.addArt(cid, c.capital, bought * 1000);
-      this.emit({ type: 'sound', name: 'buy', cid, item: 'artillery' });
-      return { ok: true, bought };
-    }
-
-    // Topçu ateşi: her topçu birliği 5 sn'de bir, bulunduğu şehre komşu bir düşman hedefe ateş eder ve hasar almaz.
-    // Hedef önceliği: bu şehre saldıran düşman birlikleri > bu şehirden saldırdığımız şehir > en kalabalık komşu düşman şehri.
-    artilleryFire(dt) {
-      for (const u of this.units) {
-        if (u.dead || !u.art || u.move || u.city === null || u.owner === CFG.REBEL) continue;
-        u.artT = (u.artT || 0) + dt;
-        if (u.artT < CFG.artInterval) continue;
-        const here = this.cities[u.city], me = u.owner;
-        let victims = null, target = null;
-        // 1) şehrimize saldıranlar (sınırdaki muharebe birlikleri)
-        const atk = this.units.filter((x) => !x.dead && !x.art && x.move && x.move.kind === 'battle' && x.move.to === here.id && this.hostile(me, x.owner));
-        if (atk.length) { victims = atk; target = atk[0].move.from; }
-        if (!victims) {
-          // 2) bu şehirden saldırdığımız şehir, 3) en kalabalık komşu düşman şehri
-          let best = -1, bestN = 0;
-          const ours = this.units.find((x) => !x.dead && x.owner === me && x.move && x.move.kind === 'battle' && x.move.from === here.id);
-          for (const nb of here.neighbors) {
-            const ci = this.cities[nb];
-            if (!this.hostile(me, ci.owner)) continue;
-            const n = this.troopsAt(nb) - this.troopsAt(nb, me);
-            if (n <= 0) continue;
-            const score = (ours && ours.move.to === nb ? 1e9 : 0) + n;
-            if (score > bestN) { bestN = score; best = nb; }
-          }
-          if (best >= 0) { target = best; victims = this.defendersOf(best, me); }
-        }
-        if (!victims || !victims.length) { u.artT = CFG.artInterval; continue; } // hedef yok: hazırda bekle
-        u.artT = 0;
-        const total = victims.reduce((s, v) => s + v.troops, 0);
-        const kill = Math.min(total, u.troops * CFG.artKill * (u.weak ? CFG.weakMult : 1));
-        for (const v of victims) v.troops -= kill * (v.troops / total);
-        // border: hedef şehrimize saldıran birlikler → mermiler sınıra (iki şehrin ortasına) düşer
-        this.emit({ type: 'fx', kind: 'shell', city: here.id, target, border: victims === atk, owner: me, victim: victims[0].owner, text: '−' + U.fmtK(kill) });
-        this.emit({ type: 'sound', name: 'cannon', cid: me, target: victims[0].owner });
-      }
     }
 
     // ---------- komutlar ----------
@@ -564,7 +499,7 @@
     arriveMove(u, cityId) {
       const m = u.move;
       let joined = null;
-      if (u.army === null && !u.art) {
+      if (u.army === null) {
         let best = null;
         for (const x of this.units) {
           if (x.dead || x === u || x.owner !== u.owner || x.army === null) continue;
@@ -640,7 +575,6 @@
         return { ok: true, unit: mover };
       }
       if (this.hostile(cid, tc.owner)) {
-        if (u.art) return { err: 'Topçular saldırmaz: komşu düşman şehrine her 5 saniyede kendiliğinden ateş eder. Sadece kendi şehirlerine taşınabilir.' };
         if (!this.cities[from].neighbors.includes(toCity)) return { err: 'Sadece komşu şehirlere saldırabilirsin' };
         // seçilen miktar kadar asker saldırıya çıkar, geri kalanı şehirde kalır
         const part = amount !== undefined && Math.round(amount) < u.troops ? U.clamp(Math.round(amount), 1, u.troops) : u.troops;
@@ -765,7 +699,7 @@
       if ((b.money || 0) > c.money + 1e-9) return `${c.name} yeterli paraya sahip değil`;
       if ((b.troops || 0) > 0) {
         let idle = 0;
-        for (const u of this.units) if (!u.dead && !u.art && u.owner === giver && !u.move && u.city !== null) idle += u.troops;
+        for (const u of this.units) if (!u.dead && u.owner === giver && !u.move && u.city !== null) idle += u.troops;
         if (b.troops > idle) return `${c.name} yeterli boşta askere sahip değil`;
       }
       for (const id of b.cities || []) {
@@ -796,7 +730,7 @@
       if (b.money > 0) { gc.money = Math.round((gc.money - b.money) * 100) / 100; rc.money = Math.round((rc.money + b.money) * 100) / 100; }
       if (b.troops > 0) {
         let need = b.troops;
-        const pool = this.units.filter((u) => !u.dead && !u.art && u.owner === giver && !u.move && u.city !== null)
+        const pool = this.units.filter((u) => !u.dead && u.owner === giver && !u.move && u.city !== null)
           .sort((x, y) => (y.city === gc.capital) - (x.city === gc.capital) || y.troops - x.troops);
         for (const u of pool) {
           if (need <= 0) break;
@@ -1013,7 +947,7 @@
           const e = this.planeTargetError(cid, args.city);
           if (e) return fail(e);
           const amount = U.clamp(Math.round((Number.isFinite(+args.amount) ? +args.amount : 0) / 1000) * 1000, 1000, CFG.planeMax);
-          const capU = this.units.filter((u) => !u.dead && !u.art && u.owner === cid && u.city === c.capital && !u.move);
+          const capU = this.units.filter((u) => !u.dead && u.owner === cid && u.city === c.capital && !u.move);
           const avail = capU.reduce((s, u) => s + u.troops, 0);
           if (avail < amount) return fail(`Başkentte yeterli asker yok (${U.fmtK(avail)})`);
           if (!this.pay(cid, pr)) return fail('Yetersiz para');
@@ -1035,7 +969,7 @@
           if (!cands.length) return fail('Bu ülkede en az 5k askerli (başkent dışı) şehir yok');
           if (!this.pay(cid, pr)) return fail('Yetersiz para');
           const target = cands[Math.floor(this.rnd() * cands.length)];
-          for (const u of this.idleUnitsAt(target.id)) { if (u.owner === t && !u.art) { u.owner = CFG.REBEL; u.army = null; } }
+          for (const u of this.idleUnitsAt(target.id)) { if (u.owner === t) { u.owner = CFG.REBEL; u.army = null; } }
           target.owner = CFG.REBEL; target.building = [];
           for (const u of this.idleUnitsAt(target.id)) if (u.owner !== CFG.REBEL) this.sendHome(u);
           this.mergeCity(target.id);
@@ -1078,7 +1012,7 @@
 
     // ---------- ordular ----------
     cmdCreateArmy(cid, unitIds, mode) {
-      const units = unitIds.map((id) => this.units.find((u) => u.id === id && !u.dead)).filter((u) => u && u.owner === cid && !u.move && !u.art);
+      const units = unitIds.map((id) => this.units.find((u) => u.id === id && !u.dead)).filter((u) => u && u.owner === cid && !u.move);
       if (!units.length) return { err: 'Birlik seçilmedi' };
       // ilk boş numara (dağıtılan ordunun adı yeniden kullanılır, aynı adda iki ordu olmaz)
       const roman = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
@@ -1108,7 +1042,7 @@
 
     // ---------- savaş çözümü ----------
     defendersOf(cityId, attacker) {
-      return this.idleUnitsAt(cityId).filter((d) => !d.art && this.hostile(attacker, d.owner)); // topçu savunmaya katılmaz, hasar almaz
+      return this.idleUnitsAt(cityId).filter((d) => this.hostile(attacker, d.owner));
     }
     effDefense(city, defenders) { let s = 0; for (const d of defenders) s += d.troops * this.defMult(d.owner, city) * (d.weak ? CFG.weakMult : 1); return s; }
 
@@ -1252,7 +1186,7 @@
         // (fatihe geçen şehirlerdeki yenik askerler silah bırakır)
         const rebelSet = new Set(rebelCities), annexSet = new Set(annexed.map((ci) => ci.id));
         for (const u of this.units) {
-          if (u.dead || u.owner !== cid || u.art || u.city === null || u.move || !rebelSet.has(u.city)) continue;
+          if (u.dead || u.owner !== cid || u.city === null || u.move || !rebelSet.has(u.city)) continue;
           u.owner = CFG.REBEL; u.army = null; u.troops = Math.round(u.troops * 0.5);
         }
         // başka ülkelerin askerleri artık düşman olan şehirlerden başkentlerine döner
@@ -1345,9 +1279,6 @@
           this.emit({ type: 'sound', name: 'buy', cid: c.owner, item: 'factoryDone' });
         }
       }
-
-      // topçu ateşi
-      this.artilleryFire(dt);
 
       // hareketler ve muharebeler
       for (const u of this.units) {
@@ -1553,7 +1484,7 @@
         c.isPlayer = i === d.playerId;
         if (d.countries[i].isHuman === undefined) c.isHuman = i === d.playerId; // eski kayıtlar
       });
-      g.units = d.units;
+      g.units = (d.units || []).filter((u) => !u.art);
       g.wars = new Map(d.wars.map((w) => [g.warKey(w.a, w.b), w]));
       g.alliances = d.alliances; g.proposals = d.proposals; g.armies = d.armies; g.projectiles = d.projectiles; g.rel = d.rel;
       if (Array.isArray(d.stats)) g.stats = d.stats;
