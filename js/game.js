@@ -15,6 +15,8 @@
     // Fabrikaya kendi toprağıyla bağlı olmayan şehirdeki askerler: saldırı, savunma ve hız ×0.5
     weakMult: 0.5,
     ideoUpMax: 3,
+    // Saldıran birliğin çıktığı şehir saldırıya uğrarsa birliğin yarısı bu sürede şehre geri döner (sınırdan, yarım yol)
+    recallTime: 1.2,
   };
 
   const IDEO = {
@@ -99,7 +101,7 @@
           pal, color: U.hsl(pal.h, pal.s, pal.l), dark: U.hsl(pal.h, Math.min(80, pal.s + 10), Math.max(14, pal.l - 30)),
           light: U.hsl(pal.h, pal.s, Math.min(90, pal.l + 18)),
           ideology: isRebel ? null : k === playerId ? opts.ideology : ideoKeys[Math.floor(this.rnd() * 3)],
-          alive: !isRebel, money: isRebel ? 0 : CFG.startMoney, incomeTimer: 0, limitBuys: 0, atkLvl: 0, defLvl: 0, blitzUntil: 0, ideoUp: {},
+          alive: !isRebel, money: isRebel ? 0 : CFG.startMoney, incomeTimer: 0, limitBuys: 0, atkLvl: 0, defLvl: 0, blitzUntil: 0, ideoUp: {}, autoDist: false,
           capital: isRebel ? -1 : this.map.capitals[k], queue: 0, prodTimer: 0, warRights: {}, allianceId: null,
           setupDone: false, bot: { eco: 1 + this.rnd() * 2, mil: 1 + this.rnd(), dip: 4 + this.rnd() * 4 },
         });
@@ -327,6 +329,7 @@
       }
       const t = U.clamp((this.time - m.t0) / (m.t1 - m.t0), 0, 1);
       const pts = m.path.map((id) => [this.cities[id].x, this.cities[id].y]);
+      if (m.sx !== undefined) pts.unshift([m.sx, m.sy]); // sınırdaki muharebeden geri dönen birlik oradan yürür
       if (pts.length === 1) return pts[0];
       let total = 0;
       const seg = [];
@@ -388,6 +391,104 @@
         if (c.queue === 0) c.prodTimer = 0;
       }
       return { ok: true };
+    }
+
+    // "Sınırlara dağıt": açıksa üretilen askerler başkentte kalmaz, sınır şehirlerine yürür
+    cmdSetAutoDist(cid, on) {
+      const c = this.countries[cid];
+      c.autoDist = on === undefined ? !c.autoDist : !!on;
+      return { ok: true, on: c.autoDist };
+    }
+
+    // Üretilen askeri teslim et: dağıtım açıksa en çok ihtiyaç duyan sınır şehrine yürür, değilse başkentte doğar.
+    deliverTroops(c, n) {
+      const cap = c.capital;
+      let dest = null, path = null;
+      if (c.autoDist && !this.isUnderAttack(cap)) {
+        for (const id of this.distTargets(c.id)) {
+          if (id === cap) break; // başkent zaten en çok ihtiyaç duyan sınır şehri
+          path = this.findPath(cap, id, c.id);
+          if (path) { dest = id; break; }
+        }
+      }
+      if (dest === null) {
+        this.addTroops(c.id, cap, n);
+        if (c.isPlayer) this.emit({ type: 'fx', kind: 'spawn', city: cap, owner: c.id, text: '+' + U.fmtK(n) });
+        return null;
+      }
+      const u = this.newUnit(c.id, null, n, null);
+      u.weak = !(this.supply && this.supply[cap]);
+      u.move = { kind: 'move', dist: true, from: cap, to: dest, path, t0: this.time, t1: this.time + CFG.moveTime * this.unitSlow(u) };
+      if (c.isPlayer) this.emit({ type: 'fx', kind: 'depart', city: cap, owner: c.id, text: '+' + U.fmtK(n) + ' → ' + this.cities[dest].name });
+      return u;
+    }
+    // Dağıtım hedefleri, öncelik sırasıyla: saldırı altındaki şehirler, savaştığı ülkeye sınır şehirler, diğer sınır şehirleri.
+    // Aynı öncelikte en az askeri olan (yoldaki takviyeler dahil) önce gelir.
+    distTargets(cid) {
+      const incoming = new Map();
+      for (const u of this.units) {
+        if (!u.dead && u.owner === cid && u.move && u.move.kind === 'move') incoming.set(u.move.to, (incoming.get(u.move.to) || 0) + u.troops);
+      }
+      const list = [];
+      for (const city of this.cities) {
+        if (city.owner !== cid) continue;
+        let p = 0;
+        if (this.isUnderAttack(city.id)) p = 3;
+        else if (city.neighbors.some((n) => this.hostile(cid, this.cities[n].owner))) p = 2;
+        else if (city.neighbors.some((n) => !this.friendly(cid, this.cities[n].owner))) p = 1;
+        if (p) list.push({ id: city.id, p, t: this.troopsAt(city.id, cid) + (incoming.get(city.id) || 0) });
+      }
+      list.sort((a, b) => b.p - a.p || a.t - b.t);
+      return list.map((x) => x.id);
+    }
+
+    // Saldırıya çıkan birliğin çıktığı şehir saldırıya uğrarsa birlik ikiye bölünür: yarısı şehri savunmaya döner.
+    recallHalf(cityId, attacker) {
+      const city = this.cities[cityId];
+      for (const x of this.units.slice()) {
+        if (x.dead || x === attacker || !x.move || x.move.kind !== 'battle' || x.move.from !== cityId) continue;
+        if (!this.friendly(x.owner, city.owner) || !this.hostile(attacker.owner, x.owner) || x.troops < 1000) continue;
+        if (!city.neighbors.includes(x.move.to)) continue; // uçakla çıkarma yapanlar uzakta, dönemez
+        const half = Math.round(x.troops / 2);
+        x.troops -= half;
+        const [mx, my] = this.unitPos(x);
+        const r = this.newUnit(x.owner, null, half, x.army);
+        r.weak = x.weak;
+        r.move = { kind: 'move', back: true, from: cityId, to: cityId, path: [cityId], sx: mx, sy: my, t0: this.time, t1: this.time + CFG.recallTime * this.unitSlow(r) };
+        this.emit({ type: 'fx', kind: 'recall', city: cityId, front: x.move.to, owner: x.owner, text: '↩ ' + U.fmtK(half) });
+        this.emit({ type: 'sound', name: 'recall', cid: x.owner });
+        if (this.countries[x.owner].isPlayer) {
+          this.say(x.owner, `⚠ ${city.name} saldırı altında! ${this.cities[x.move.to].name} cephesindeki birliğinin yarısı (${U.fmtK(half)}) şehri savunmaya dönüyor.`, 'war');
+        }
+      }
+    }
+
+    // Yürüyüşle gelen (ordusuz) askerler, şehirde ordumuzun bir birliği varsa (ya da oradan saldırıyorsa) o orduya katılır.
+    arriveMove(u, cityId) {
+      const m = u.move;
+      let joined = null;
+      if (u.army === null) {
+        let best = null;
+        for (const x of this.units) {
+          if (x.dead || x === u || x.owner !== u.owner || x.army === null) continue;
+          const idle = !x.move && x.city === cityId;
+          const fighting = x.move && x.move.kind === 'battle' && x.move.from === cityId;
+          if (!idle && !fighting) continue;
+          if (!best || (idle && best.move) || (!!x.move === !!best.move && x.troops > best.troops)) best = x;
+        }
+        joined = best ? this.armies.find((a) => a.id === best.army) : null;
+        if (joined) u.army = joined.id;
+      }
+      const n = u.troops;
+      this.placeUnit(u, cityId);
+      if (joined) {
+        this.emit({ type: 'fx', kind: 'join', city: cityId, owner: u.owner, mode: joined.mode, text: '+' + U.fmtK(n) + ' ⚑ ' + joined.name });
+        this.emit({ type: 'sound', name: 'armyJoin', cid: u.owner });
+      } else if (m && m.dist) {
+        this.emit({ type: 'fx', kind: 'arrive', city: cityId, owner: u.owner, text: '+' + U.fmtK(n) });
+      } else if (m && m.back) {
+        this.emit({ type: 'fx', kind: 'shield', city: cityId, owner: u.owner });
+      }
     }
 
     cmdUpgrade(cid, kind) {
@@ -938,6 +1039,8 @@
       // prog: şehrin ne kadarının ele geçirildiği (0..1) — haritada sınırdan içeri doğru yavaş yavaş ilerler
       u.move = { kind: 'battle', from: fromId, to: cityId, path: [fromId, cityId], t0: this.time, t1: this.time + dur, effD0: Math.max(effD, 1), prog: 0 };
       this.emit({ type: 'sound', name: 'battleStart', cid: u.owner, target: city.owner, city: cityId });
+      // bu şehirden başka bir şehre saldıran birlik varsa yarısı savunmaya döner
+      this.recallHalf(cityId, u);
     }
 
     winAttack(u, city, defenders, effA, effD, aM) {
@@ -1054,7 +1157,7 @@
           const tt = this.troopTime(c.id); // Komünizm: Beş Yıllık Plan üretimi hızlandırır
           while (c.prodTimer >= tt && c.queue > 0) {
             c.prodTimer -= tt; c.queue--;
-            this.addTroops(c.id, c.capital, 1000);
+            this.deliverTroops(c, 1000); // "Sınırlara dağıt" açıksa sınıra yürür
             if (c.isPlayer) this.emit({ type: 'sound', name: 'troopReady', cid: c.id });
           }
           if (c.queue === 0) c.prodTimer = 0;
@@ -1086,7 +1189,8 @@
         if (T < m.t1) continue;
         const city = this.cities[m.to];
         if (m.kind === 'attack' || m.kind === 'para') this.resolveAttack(u, m.to, m.from);
-        else if (this.friendly(u.owner, city.owner)) this.placeUnit(u, m.to);
+        else if (this.friendly(u.owner, city.owner)) { if (m.kind === 'move') this.arriveMove(u, m.to); else this.placeUnit(u, m.to); }
+        else if (m.dist || m.back) this.retreat(u); // takviyenin gittiği şehir düştüyse geri döner
         else if (this.hostile(u.owner, city.owner) && m.kind === 'move') this.resolveAttack(u, m.to, m.path.length > 1 ? m.path[m.path.length - 2] : m.from);
         else this.sendHome(u);
       }

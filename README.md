@@ -47,6 +47,8 @@ bir sonraki açılışta yeni sürümü alır.
 - Uygulama arka plandayken oyun duraklar
 - **Ses ve müzik** (dosyasız, tamamı tarayıcıda üretilir): barışta sakin müzik, savaşta taiko davullu savaş müziği, çatışmada daha yoğun hali;
   kılıç sesleri, savaş boruları, fanfar, füze/patlama, para ve arayüz sesleri. Üst çubuktaki 🔊 düğmesi (ya da **M**) sesi açar/kapatır.
+- **Animasyonlar:** yürüyen birlikler sallanır ve arkalarında toz kalkar; asker doğunca/sınıra varınca yükselen "+1k" yazısı,
+  orduya katılınca ordu renginde halkalar, savunmaya dönüşte altın ok + kalkan; menüde sayılar değişince zıplar, anahtar kayarak açılır.
 
 ## İdeolojiye özel geliştirmeler
 
@@ -76,6 +78,13 @@ fiyatı seviye başına artar (6 → 9 → 12₺, Komünizm'de %10 ucuz). Etkile
 - Haritada saldırı **OpenFront gibi** izlenir: savaştaki ülkelerin ortak sınırı kırmızıya döner, saldırı yolundaki sınır kırmızı yanıp söner,
   çatışma sürerken saldıranın rengi sınırdan şehrin içine doğru yavaş yavaş yayılır (şehir üstünde %ilerleme yazar).
 - Saldıran birlik, çatışma bitene kadar komuta edilemez. **Saldırı altındaki şehirdeki askerler şehri terk edemez**, savunmak zorundadır (takviye gönderilebilir).
+- **Çıkış şehri saldırıya uğrarsa:** bir birlik komşu şehre saldırırken çıktığı şehre saldırı başlarsa birlik ikiye bölünür;
+  yarısı cephede kalır, yarısı ~1 sn'de geri dönüp şehri savunur (haritada altın bir ok ve kalkan görünür). Bu kural botlar için de geçerlidir.
+- **Ordular:** bir ordunun bulunduğu (ya da oradan saldırıya çıktığı) şehre gönderdiğin ordusuz askerler o orduya katılır.
+- **Asker üretimi:** Askeri Yönetim'de "Eklenecek asker" sırada bekleyen asker sayısını gösterir (+3k gibi). Hemen altındaki
+  **Sınırlara dağıt** anahtarı açıkken yeni askerler başkentte kalmaz, sınıra yürür: önce saldırı altındaki şehirler, sonra
+  savaştığın ülkeye/isyancılara sınır olan şehirler, sonra diğer sınır şehirleri; aynı öncelikte en az askeri olan (yoldakiler dahil) seçilir.
+  Başkent saldırı altındaysa askerler başkentte kalır.
 - Her şehrin askeri, haritada toprağın üzerine yazılır (altın alt çizgi = senin birliğin).
 - **Fabrika bağlantısı (ikmal):** bir şehir, kendi toprağın üzerinden hiçbir fabrikaya bağlı değilse oradaki askerler
   **%50 daha zayıf saldırır, %50 daha zayıf savunur ve %50 daha yavaş yürür**. Bu askerlerin üstünde sarı bir **❗** işareti görünür

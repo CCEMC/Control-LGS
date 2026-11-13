@@ -320,6 +320,8 @@
       case 'warDeclared': sfx(ev.cid === me || ev.target === me ? 'warDecl' : 'gongSoft'); break;
       case 'peace': if (ev.cid === me || ev.target === me) sfx('peace'); break;
       case 'troopReady': sfx('troop'); break;
+      case 'recall': if (ev.cid === me) { sfx('march'); sfx('horn'); } break;
+      case 'armyJoin': if (ev.cid === me) sfx('good'); break;
       case 'buy':
         if (ev.item === 'missile') sfx('missile');
         else if (ev.item === 'plane') sfx('plane');

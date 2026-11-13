@@ -183,6 +183,27 @@ h5 small { font-family: var(--font); font-style: italic; letter-spacing: 0; font
 .prod .bar { height: 6px; background: rgba(91,65,38,.25); border-radius: 3px; overflow: hidden; margin-top: 8px; }
 .prod .bar i { display: block; height: 100%; background: var(--green); transition: width .1s linear; }
 .prod small { font-size: 12px; color: var(--ink3); }
+/* canlı değer değişince zıplar */
+.lpop { display: inline-block; }
+.lpop.bump { animation: bump .38s cubic-bezier(.3,1.7,.5,1); }
+@keyframes bump { 0% { transform: scale(1); } 35% { transform: scale(1.32); color: var(--green); } 100% { transform: scale(1); } }
+/* "Sınırlara dağıt" anahtarı */
+.tgl { display: inline-flex; align-items: center; gap: 7px; margin-top: 7px; padding: 4px 10px 4px 5px; font-family: var(--font); font-size: 13.5px; color: var(--ink2);
+  background: rgba(255,250,235,.55); border: 1px solid rgba(91,65,38,.4); border-radius: 15px; cursor: pointer;
+  transition: background .3s, border-color .3s, color .3s, box-shadow .3s; }
+.tgl:hover { filter: brightness(1.05); }
+.tgl:active { transform: translateY(1px); }
+.tgl-track { position: relative; flex: none; width: 32px; height: 18px; border-radius: 9px; background: rgba(91,65,38,.38); transition: background .3s; }
+.tgl-track i { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fbf1d6;
+  box-shadow: 0 1px 3px rgba(0,0,0,.4); transition: transform .32s cubic-bezier(.3,1.6,.5,1); }
+.tgl-ar { width: 0; overflow: hidden; opacity: 0; color: var(--green); font-weight: bold; transition: width .3s, opacity .3s; }
+.tgl.on { color: #2f4a1a; background: rgba(110,150,70,.2); border-color: rgba(77,107,47,.75); box-shadow: 0 0 0 0 rgba(77,107,47,.5); animation: tglGlow 2.2s ease-in-out infinite; }
+.tgl.on .tgl-track { background: var(--green); }
+.tgl.on .tgl-track i { transform: translateX(14px); }
+.tgl.on .tgl-ar { width: 10px; opacity: 1; animation: tglFlow 1s linear infinite; }
+@keyframes tglGlow { 50% { box-shadow: 0 0 9px 1px rgba(110,150,70,.55); } }
+@media (prefers-reduced-motion: reduce) { .tgl.on, .tgl.on .tgl-ar, .lpop.bump { animation: none; } }
+@keyframes tglFlow { 0% { transform: translateX(-3px); opacity: .2; } 50% { opacity: 1; } 100% { transform: translateX(4px); opacity: .2; } }
 .equip { list-style: none; margin: 0; padding: 0; }
 .equip li { display: grid; grid-template-columns: 1fr auto auto; gap: 4px 12px; align-items: center; padding: 5px 0; border-bottom: 1px dotted rgba(91,65,38,.35); }
 .equip .up-h { display: flex; flex-direction: column; line-height: 1.15; }

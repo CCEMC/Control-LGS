@@ -365,6 +365,8 @@
     }
 
     L(fn) { this.liveBuf.push(fn); return `<span data-l="${this.liveBuf.length - 1}"></span>`; }
+    // değeri değişince küçük bir "zıplama" animasyonu yapan canlı değer
+    LP(fn) { this.liveBuf.push(fn); return `<span class="lpop" data-l="${this.liveBuf.length - 1}"></span>`; }
     LW(fn) { this.liveBuf.push(fn); return `<i data-lw="${this.liveBuf.length - 1}"></i>`; }
 
     renderPanel() {
@@ -392,7 +394,19 @@
     updateLive() {
       if (!this.menu) return;
       const body = this.$('panelBody');
-      body.querySelectorAll('[data-l]').forEach((el) => { const f = this.live[+el.dataset.l]; if (f) { const v = f(); if (el.textContent !== v) el.textContent = v; } });
+      if (!this.popVals || this.popMenu !== this.menu) { this.popVals = {}; this.popMenu = this.menu; }
+      body.querySelectorAll('[data-l]').forEach((el) => {
+        const f = this.live[+el.dataset.l];
+        if (!f) return;
+        const v = f();
+        if (el.textContent === v) return;
+        el.textContent = v;
+        if (!el.classList.contains('lpop')) return;
+        // panel yeniden çizilse bile önceki değer hatırlanır; değer değiştiyse zıplar
+        const k = el.dataset.l, prev = this.popVals[k];
+        this.popVals[k] = v;
+        if (prev !== undefined && prev !== v) { el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
+      });
       body.querySelectorAll('[data-lw]').forEach((el) => { const f = this.live[+el.dataset.lw]; if (f) el.style.width = f() + '%'; });
     }
 
@@ -497,17 +511,21 @@
         ${warn}
         <div class="mtop">
           <div class="mstat"><span>Toplam asker</span><b>${this.L(() => fmtK(g.totalTroops(me)))}</b></div>
-          <div class="mtarget"><span>Hedef</span>
+          <div class="mtarget"><span>Eklenecek asker</span>
             <div class="target-row"><button class="btn round" data-act="q" data-dir="-1" ${P.queue <= 0 ? 'disabled' : ''}>−</button>
-              <b class="target">${this.L(() => fmtK(g.totalTroops(me) + P.queue * 1000))}</b>
-              <button class="btn round" data-act="q" data-dir="1" ${P.money < tp ? 'disabled' : ''}>+</button></div></div>
+              <b class="target">${this.LP(() => '+' + fmtK(P.queue * 1000))}</b>
+              <button class="btn round" data-act="q" data-dir="1" ${P.money < tp ? 'disabled' : ''}>+</button></div>
+            <button class="tgl ${P.autoDist ? 'on' : ''}" data-act="autodist" role="switch" aria-checked="${!!P.autoDist}"
+              title="Açıkken üretilen askerler başkentte kalmaz; önce saldırı altındaki, sonra savaştığın ülkeye sınır olan, en az askeri olan şehre yürür.">
+              <span class="tgl-track"><i></i></span><span class="tgl-l">Sınırlara dağıt</span><span class="tgl-ar">»</span></button></div>
         </div>
         <div class="prod"><div class="bar">${this.LW(() => (P.queue > 0 ? (P.prodTimer / g.troopTime(me)) * 100 : 0))}</div>
-          <small>${this.L(() => (P.queue > 0 ? `Üretimde: ${P.queue}k` : 'Üretim yok'))} · her +1k asker = ${fmtMoney(tp)}, başkentte doğar</small></div>
+          <small>${this.L(() => (P.queue > 0 ? `Üretimde: ${P.queue}k` : 'Üretim yok'))} · her +1k asker = ${fmtMoney(tp)} · ${this.L(() => (P.autoDist ? 'sınırlara yürür' : 'başkentte doğar'))}</small></div>
         <div class="sect"><h5>Ekipman</h5><ul class="equip">${upRow('atk', 'Saldırı')}${upRow('def', 'Savunma')}</ul></div>
         ${ideoSect}
         <div class="sect"><div class="ar-top"><h5>Ordular</h5><button class="btn sm" data-act="mark">+ Ordu Kur</button></div>
-          <ul class="armies">${armyList || '<li class="empty">Ordun yok. Birlikleri işaretleyip ordu kurabilirsin.</li>'}</ul></div>
+          <ul class="armies">${armyList || '<li class="empty">Ordun yok. Birlikleri işaretleyip ordu kurabilirsin.</li>'}</ul>
+          ${armyList ? '<small class="note">Ordunun bulunduğu şehre gönderdiğin askerler orduya katılır.</small>' : ''}</div>
         <p class="note">Birliğe ${tap} → miktarı seç → hedef şehre ${tap}.${this.mode === 'pc' ? ' Q: iptal.' : ''}</p>
       </div>`;
     }
@@ -575,6 +593,14 @@
         case 'join': res(g.cmdJoinRequest(me, id), 'Katılma başvurusu tüm üyelere gönderildi.'); break;
         case 'leave': res(g.cmdLeaveAlliance(me), 'İttifaktan ayrıldın.'); break;
         case 'q': res(g.cmdQueueTroops(me, +b.dataset.dir)); break;
+        case 'autodist': {
+          // Anahtar yerinde değişir (kayarak); panel yeniden çizilmez ki geçiş animasyonu kesilmesin.
+          const r = g.cmdSetAutoDist(me);
+          b.classList.toggle('on', r.on); b.setAttribute('aria-checked', String(r.on));
+          this.liveBuf = []; this.lastHtml = this.htmlMilitary(); this.live = this.liveBuf;
+          this.updateLive();
+          break;
+        }
         case 'up': res(g.cmdUpgrade(me, b.dataset.kind), `${b.dataset.kind === 'atk' ? 'Saldırı' : 'Savunma'} geliştirildi.`); break;
         case 'iup': {
           const r = g.cmdIdeoUpgrade(me, b.dataset.key);

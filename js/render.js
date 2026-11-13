@@ -6,6 +6,10 @@
   const INK = '#3a2814';
   const FONT = "'IM Fell English', 'Palatino Linotype', Georgia, serif";
   const FONT_SC = "'IM Fell English SC', 'Palatino Linotype', Georgia, serif";
+  // efekt süreleri (ms)
+  const FX_DUR = { explosion: 1400, capture: 1400, intercept: 1400, recall: 1900, shield: 1300, join: 2000, arrive: 1500, spawn: 1300, depart: 1700 };
+  const easeOut = (t) => 1 - (1 - t) * (1 - t) * (1 - t);
+  const easeBack = (t) => { const c = 1.9; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
 
   class Renderer {
     constructor(canvas, mini, game, ui) {
@@ -25,7 +29,10 @@
       game.on((ev) => {
         if (ev.type === 'fx') {
           const c = game.cities[ev.city];
-          this.fx.push({ kind: ev.kind, x: c.x, y: c.y, t0: performance.now() });
+          const f = { ...ev, x: c.x, y: c.y, t0: performance.now(), dur: FX_DUR[ev.kind] || 1400 };
+          if (ev.front !== undefined) { const b = game.cities[ev.front]; f.bx = (c.x + b.x) / 2; f.by = (c.y + b.y) / 2; }
+          this.fx.push(f);
+          if (this.fx.length > 60) this.fx.splice(0, this.fx.length - 60);
         }
       });
     }
@@ -692,9 +699,22 @@
         const dest = g.cities[m.to];
         const [dx, dy] = this.toScreen(dest.x, dest.y);
         const hostile = m.kind === 'attack' || m.kind === 'battle' || (m.kind === 'para' && !g.friendly(u.owner, dest.owner));
+        let bob = 0;
+        if (m.kind === 'move' || m.kind === 'retreat') {
+          // yürüyüş: birlik hafifçe sallanır, arkasında toz bulutu kalkar
+          bob = Math.sin(now / 95 + u.id) * 1.6 * s;
+          const a = Math.atan2(dy - sy, dx - sx), ca = Math.cos(a), sa = Math.sin(a);
+          for (let k = 0; k < 4; k++) {
+            const ph = (now / 520 + k / 4 + u.id * 0.13) % 1;
+            const back = (10 + ph * 26) * s, side = Math.sin((ph + k) * 9) * 4 * s;
+            ctx.fillStyle = `rgba(132,104,66,${0.32 * (1 - ph)})`;
+            ctx.beginPath(); ctx.arc(sx - ca * back - sa * side, sy + 8 * s - sa * back + ca * side, (2 + ph * 5) * s, 0, Math.PI * 2); ctx.fill();
+          }
+        }
         if (m.kind !== 'battle') {
           ctx.setLineDash([6, 6]); ctx.lineDashOffset = -now / 60;
-          ctx.strokeStyle = hostile ? 'rgba(170,25,15,0.85)' : 'rgba(40,28,14,0.7)'; ctx.lineWidth = 2.2;
+          ctx.strokeStyle = hostile ? 'rgba(170,25,15,0.85)' : m.back ? 'rgba(196,140,22,0.95)' : m.dist ? 'rgba(46,112,52,0.75)' : 'rgba(40,28,14,0.7)';
+          ctx.lineWidth = m.back ? 3 : 2.2;
           ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(dx, dy); ctx.stroke(); ctx.setLineDash([]);
           // ok ucu
           const a = Math.atan2(dy - sy, dx - sx);
@@ -717,7 +737,7 @@
           ctx.fillStyle = INK; ctx.save(); ctx.translate(sx, sy - 18 * s); ctx.rotate(Math.atan2(dy - sy, dx - sx));
           ctx.fillText('✈︎', 0, 0); ctx.restore();
         }
-        this.token(ctx, sx, sy, u, {});
+        this.token(ctx, sx, sy + bob, u, {});
       }
     }
 
@@ -752,20 +772,112 @@
     }
 
     drawFx(ctx, now) {
-      this.fx = this.fx.filter((f) => now - f.t0 < 1400);
+      const s = this.ui.scale, me = this.game.playerId;
+      this.fx = this.fx.filter((f) => now - f.t0 < f.dur);
       for (const f of this.fx) {
-        const t = (now - f.t0) / 1400;
+        const t = (now - f.t0) / f.dur;
         const [sx, sy] = this.toScreen(f.x, f.y);
-        if (f.kind === 'explosion') {
-          for (let k = 0; k < 3; k++) {
-            ctx.beginPath(); ctx.arc(sx, sy, 10 + t * (60 + k * 25), 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(${230 - k * 30},${120 - k * 30},30,${(1 - t) * 0.35})`; ctx.fill();
+        if (sx < -160 || sx > this.vw + 160 || sy < -160 || sy > this.vh + 160) continue;
+        const mine = f.owner === me;
+        switch (f.kind) {
+          case 'explosion':
+            for (let k = 0; k < 3; k++) {
+              ctx.beginPath(); ctx.arc(sx, sy, 10 + t * (60 + k * 25), 0, Math.PI * 2);
+              ctx.fillStyle = `rgba(${230 - k * 30},${120 - k * 30},30,${(1 - t) * 0.35})`; ctx.fill();
+            }
+            break;
+          case 'recall': {
+            // cepheden şehre akan altın ok + şehirde açılan kalkan halkası
+            const [bx, by] = this.toScreen(f.bx, f.by);
+            const k = easeOut(Math.min(1, t * 1.7));
+            const nx = -(sy - by), ny = sx - bx, nl = Math.hypot(nx, ny) || 1;
+            const cx = (bx + sx) / 2 + (nx / nl) * 26 * s, cy = (by + sy) / 2 + (ny / nl) * 26 * s;
+            const q = (p) => [(1 - p) * (1 - p) * bx + 2 * (1 - p) * p * cx + p * p * sx, (1 - p) * (1 - p) * by + 2 * (1 - p) * p * cy + p * p * sy];
+            const al = 1 - Math.max(0, (t - 0.6) / 0.4);
+            ctx.save(); ctx.lineCap = 'round';
+            ctx.strokeStyle = `rgba(214,160,36,${0.95 * al})`; ctx.lineWidth = 4.5 * s;
+            ctx.beginPath(); ctx.moveTo(bx, by);
+            for (let i = 1; i <= 16; i++) { const [px, py] = q((i / 16) * k); ctx.lineTo(px, py); }
+            ctx.stroke();
+            const [hx, hy] = q(k), [px, py] = q(Math.max(0, k - 0.05));
+            const ang = Math.atan2(hy - py, hx - px);
+            ctx.fillStyle = `rgba(214,160,36,${al})`;
+            ctx.beginPath(); ctx.moveTo(hx + Math.cos(ang) * 9 * s, hy + Math.sin(ang) * 9 * s);
+            ctx.lineTo(hx + Math.cos(ang + 2.4) * 9 * s, hy + Math.sin(ang + 2.4) * 9 * s);
+            ctx.lineTo(hx + Math.cos(ang - 2.4) * 9 * s, hy + Math.sin(ang - 2.4) * 9 * s); ctx.fill();
+            ctx.restore();
+            if (t > 0.35) this.fxRing(ctx, sx, sy, (t - 0.35) / 0.65, [214, 160, 36], 16 * s, 46 * s);
+            this.floatText(ctx, sx, sy - 34 * s, f.text, t, '#7a4c08');
+            break;
           }
-        } else {
-          ctx.beginPath(); ctx.arc(sx, sy, 10 + t * 50, 0, Math.PI * 2);
-          ctx.strokeStyle = f.kind === 'intercept' ? `rgba(40,110,160,${1 - t})` : `rgba(240,200,80,${1 - t})`;
-          ctx.lineWidth = 4; ctx.stroke();
+          case 'shield': {
+            // savunmaya dönen birlik şehre girdi: kalkan belirir
+            const p = Math.min(1, t / 0.35), al = 1 - Math.max(0, (t - 0.55) / 0.45);
+            this.fxRing(ctx, sx, sy, t, [44, 90, 140], 14 * s, 40 * s);
+            ctx.save(); ctx.globalAlpha = al; ctx.translate(sx, sy - 30 * s); const sc = easeBack(p) * s; ctx.scale(sc, sc);
+            ctx.beginPath(); ctx.moveTo(0, -11); ctx.lineTo(9, -7); ctx.quadraticCurveTo(9, 6, 0, 12); ctx.quadraticCurveTo(-9, 6, -9, -7); ctx.closePath();
+            ctx.fillStyle = '#2c5a8c'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#f1dc9a'; ctx.stroke();
+            ctx.restore();
+            break;
+          }
+          case 'join': {
+            // orduya katılım: ordu renginde iki halka + bayrak yazısı
+            const col = f.mode === 'attack' ? [163, 39, 28] : [44, 90, 140];
+            this.fxRing(ctx, sx, sy, t, col, 12 * s, 54 * s);
+            this.fxRing(ctx, sx, sy, Math.max(0, t - 0.18) / 0.82, col, 12 * s, 38 * s);
+            if (mine) this.floatText(ctx, sx, sy - 34 * s, f.text, t, `rgb(${col.join(',')})`);
+            break;
+          }
+          case 'arrive':
+            if (!mine) break;
+            this.fxRing(ctx, sx, sy, t, [46, 112, 52], 10 * s, 34 * s);
+            this.floatText(ctx, sx, sy - 30 * s, f.text, t, '#2e7034');
+            break;
+          case 'spawn':
+            if (!mine) break;
+            this.sparkle(ctx, sx, sy, t, s);
+            this.floatText(ctx, sx, sy - 30 * s, f.text, t, '#2e7034');
+            break;
+          case 'depart':
+            if (!mine) break;
+            this.floatText(ctx, sx, sy - 30 * s, f.text, t, '#2e7034', 0.8);
+            break;
+          default:
+            ctx.beginPath(); ctx.arc(sx, sy, 10 + t * 50, 0, Math.PI * 2);
+            ctx.strokeStyle = f.kind === 'intercept' ? `rgba(40,110,160,${1 - t})` : `rgba(240,200,80,${1 - t})`;
+            ctx.lineWidth = 4; ctx.stroke();
         }
+      }
+    }
+    // genişleyip sönen halka
+    fxRing(ctx, x, y, t, rgb, r0, r1) {
+      if (t <= 0 || t >= 1) return;
+      const e = easeOut(t);
+      ctx.beginPath(); ctx.arc(x, y, r0 + (r1 - r0) * e, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${(1 - t) * 0.9})`; ctx.lineWidth = 2 + 3 * (1 - t); ctx.stroke();
+    }
+    // yükselip sönen yazı (önce büyüyerek belirir)
+    floatText(ctx, x, y, text, t, color, size) {
+      if (!text) return;
+      const s = this.ui.scale;
+      const rise = easeOut(Math.min(1, t)) * 26 * s;
+      const al = t < 0.12 ? t / 0.12 : 1 - Math.max(0, (t - 0.62) / 0.38);
+      const sc = easeBack(Math.min(1, t / 0.25));
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, al);
+      ctx.translate(x, y - rise); ctx.scale(sc, sc);
+      ctx.font = `bold ${15 * (size || 1) * s}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+      ctx.lineWidth = 4.5 * s; ctx.strokeStyle = 'rgba(250,242,220,0.96)'; ctx.strokeText(text, 0, 0);
+      ctx.fillStyle = color; ctx.fillText(text, 0, 0);
+      ctx.restore();
+    }
+    // asker doğunca başkentte parlayan küçük kıvılcımlar
+    sparkle(ctx, x, y, t, s) {
+      const al = 1 - t;
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2 + t * 1.5, r = (8 + easeOut(t) * 22) * s;
+        ctx.fillStyle = `rgba(226,184,74,${al})`;
+        ctx.beginPath(); ctx.arc(x + Math.cos(a) * r, y + Math.sin(a) * r, 2.2 * s * (1 - t * 0.6), 0, Math.PI * 2); ctx.fill();
       }
     }
 
