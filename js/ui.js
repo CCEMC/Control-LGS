@@ -308,6 +308,7 @@
       bar.classList.toggle('hidden', !key);
       this.updateBarLive();
     }
+    _txt(id, v) { const el = this.$(id); if (el && el.textContent !== v) el.textContent = v; }
     updateBarLive() {
       const g = this.game;
       const sel = this.selectedUnit();
@@ -316,14 +317,14 @@
         const maxK = Math.max(1, Math.ceil(sel.troops / 1000));
         if (r && +r.max !== maxK) { r.max = maxK; }
         if (this.amountK > maxK) this.amountK = maxK;
-        const info = this.$('selInfo'); if (info) info.textContent = `${fmtK(sel.troops)} · ${g.cities[sel.city].name}${sel.weak ? ' · ❗ fabrikaya bağlı değil (−%50)' : ''}`;
-        const v = this.$('amtVal'); if (v) v.textContent = fmtK(Math.min(sel.troops, this.amountK * 1000));
+        this._txt('selInfo', `${fmtK(sel.troops)} · ${g.cities[sel.city].name}${sel.weak ? ' · ❗ fabrikaya bağlı değil (−%50)' : ''}`);
+        this._txt('amtVal', fmtK(Math.min(sel.troops, this.amountK * 1000)));
       } else if (this.barKey.startsWith('target') && this.targeting && this.targeting.info) {
-        const el = this.$('pickInfo'); if (el) el.textContent = this.targeting.info();
+        this._txt('pickInfo', this.targeting.info());
       } else if (this.barKey === 'mark') {
         let t = 0;
         for (const id of this.marked) { const u = g.units.find((x) => x.id === id && !x.dead); if (u) t += u.troops; else this.marked.delete(id); }
-        const el = this.$('markInfo'); if (el) el.textContent = `${this.marked.size} birlik · ${fmtK(t)}`;
+        this._txt('markInfo', `${this.marked.size} birlik · ${fmtK(t)}`);
       }
     }
     onBarClick(e) {
@@ -348,34 +349,53 @@
     // ---------- üst çubuk ----------
     updateTop() {
       const g = this.game, p = g.player;
-      this.$('tbMoney').textContent = fmtMoney(p.money);
-      this.$('tbInc').style.width = (p.incomeTimer / G.CFG.incomeInterval) * 100 + '%';
+      this._txt('tbMoney', fmtMoney(p.money));
+      const incW = ((p.incomeTimer / G.CFG.incomeInterval) * 100).toFixed(1) + '%';
+      if (this._lastIncW !== incW) { this._lastIncW = incW; this.$('tbInc').style.width = incW; }
       const f = g.factoriesOf(p.id);
-      this.$('tbIncTxt').textContent = `+${g.incomeOf(p.id)}₺ / ${G.CFG.incomeInterval} sn`;
-      this.$('tbTroops').textContent = fmtK(g.totalTroops(p.id)) + (p.queue ? ` (+${p.queue}k)` : '');
-      this.$('tbFac').textContent = f;
-      this.$('tbCities').textContent = g.citiesOf(p.id).length;
-      this.$('tbTime').textContent = fmtTime(g.time);
+      this._txt('tbIncTxt', `+${g.incomeOf(p.id)}₺ / ${G.CFG.incomeInterval} sn`);
+      this._txt('tbTroops', fmtK(g.totalTroops(p.id)) + (p.queue ? ` (+${p.queue}k)` : ''));
+      this._txt('tbFac', String(f));
+      this._txt('tbCities', String(g.citiesOf(p.id).length));
+      this._txt('tbTime', fmtTime(g.time));
       const bl = p.blitzUntil - g.time;
-      const be = this.$('tbBlitz');
-      be.classList.toggle('hidden', bl <= 0);
-      if (bl > 0) be.textContent = 'Blitzkrieg ' + fmtTime(bl);
+      const blOn = bl > 0;
+      if (this._lastBlitz !== blOn) { this._lastBlitz = blOn; this.$('tbBlitz').classList.toggle('hidden', !blOn); }
+      if (blOn) this._txt('tbBlitz', 'Blitzkrieg ' + fmtTime(bl));
       const wars = g.enemiesOf(p.id).filter((x) => !g.isRebel(x));
-      const we = this.$('tbWar');
-      we.classList.toggle('hidden', !wars.length);
-      if (wars.length) we.textContent = '⚔︎ Savaş: ' + wars.map((w) => g.countries[w].name).join(', ');
-      document.querySelectorAll('#sidebar button').forEach((b) => b.classList.toggle('active', b.dataset.menu === this.menu));
+      const warOn = wars.length > 0;
+      if (this._lastWar !== warOn) { this._lastWar = warOn; this.$('tbWar').classList.toggle('hidden', !warOn); }
+      if (warOn) this._txt('tbWar', '⚔︎ Savaş: ' + wars.map((w) => g.countries[w].name).join(', '));
+      if (this._topMenu !== this.menu) {
+        this._topMenu = this.menu;
+        const btns = this._sideBtns || (this._sideBtns = [...document.querySelectorAll('#sidebar button')]);
+        for (let i = 0; i < btns.length; i++) btns[i].classList.toggle('active', btns[i].dataset.menu === this.menu);
+      }
       // gelen teklif süreleri
-      document.querySelectorAll('[data-exp]').forEach((el) => {
-        const pr = g.proposals.find((x) => x.id === +el.dataset.exp);
-        if (pr) el.style.width = Math.max(0, ((pr.expires - g.time) / G.CFG.proposalTimeout) * 100) + '%';
-      });
+      if (g.proposals.length) {
+        const inbox = this.$('inbox');
+        if (inbox) inbox.querySelectorAll('[data-exp]').forEach((el) => {
+          const pr = g.proposals.find((x) => x.id === +el.dataset.exp);
+          if (pr) el.style.width = Math.max(0, ((pr.expires - g.time) / G.CFG.proposalTimeout) * 100) + '%';
+        });
+      }
     }
 
     // ---------- ipucu ----------
+    moveTooltip(sx, sy) {
+      if (this._tipHidden !== false || this.mode === 'mobile') return;
+      if (sx === this._tipSx && sy === this._tipSy) return;
+      this._tipSx = sx; this._tipSy = sy;
+      const tip = this._tipEl || (this._tipEl = this.$('tooltip'));
+      tip.style.left = Math.min(window.innerWidth - this._tipW - 8, sx + 16) + 'px';
+      tip.style.top = Math.min(window.innerHeight - this._tipH - 8, sy + 16) + 'px';
+    }
     tooltip(cityId, sx, sy) {
-      const tip = this.$('tooltip');
-      if (cityId === null || this.mode === 'mobile') { tip.classList.add('hidden'); return; }
+      const tip = this._tipEl || (this._tipEl = this.$('tooltip'));
+      if (cityId === null || this.mode === 'mobile') {
+        if (this._tipHidden !== true) { tip.classList.add('hidden'); this._tipHidden = true; }
+        return;
+      }
       const g = this.game, c = g.cities[cityId], o = g.countries[c.owner];
       const isCap = g.countries.some((k) => k.alive && k.capital === cityId);
       const units = g.idleUnitsAt(cityId);
@@ -388,13 +408,20 @@
       if (c.building.length) struct.push(`🏗 ${c.building.length} fabrika inşaatta`);
       if (c.cityDef) struct.push('şehir savunması');
       if (c.airDef) struct.push('hava koruma');
-      tip.innerHTML = `<div class="tt-h">${isCap ? '★ ' : ''}${esc(c.name)}</div>
+      const html = `<div class="tt-h">${isCap ? '★ ' : ''}${esc(c.name)}</div>
         <div class="tt-o"><span class="sw" style="background:${o.color}"></span>${esc(o.name)}${isCap ? ' · başkent' : ''}${g.isBorderCity(cityId) ? ' · sınır' : ''}</div>
         ${troops}${struct.length ? `<div class="tt-s">${struct.join(' · ')}</div>` : ''}${inc ? `<div class="tt-w">⚔︎ saldırı altında!</div>` : ''}${units.some((u) => u.weak) ? `<div class="tt-w">❗ Fabrikaya bağlı değil: asker −%50</div>` : ''}`;
-      tip.classList.remove('hidden');
-      const w = tip.offsetWidth, h = tip.offsetHeight;
-      tip.style.left = Math.min(window.innerWidth - w - 8, sx + 16) + 'px';
-      tip.style.top = Math.min(window.innerHeight - h - 8, sy + 16) + 'px';
+      const changed = html !== this._tipHtml || this._tipHidden !== false;
+      if (changed) {
+        if (html !== this._tipHtml) { tip.innerHTML = html; this._tipHtml = html; }
+        if (this._tipHidden !== false) { tip.classList.remove('hidden'); this._tipHidden = false; }
+        this._tipW = tip.offsetWidth; this._tipH = tip.offsetHeight;
+      }
+      if (changed || sx !== this._tipSx || sy !== this._tipSy) {
+        this._tipSx = sx; this._tipSy = sy;
+        tip.style.left = Math.min(window.innerWidth - this._tipW - 8, sx + 16) + 'px';
+        tip.style.top = Math.min(window.innerHeight - this._tipH - 8, sy + 16) + 'px';
+      }
     }
 
     // ---------- menüler ----------
@@ -440,6 +467,9 @@
         body.innerHTML = html;
         for (const id in keep) { const s = document.getElementById(id); if (s && [...s.options].some((o) => o.value === keep[id])) s.value = keep[id]; }
         body.querySelectorAll(SCR).forEach((s, i) => { if (tops[i]) { s.scrollTop = tops[i][0]; s.scrollLeft = tops[i][1]; } });
+        this._liveL = [...body.querySelectorAll('[data-l]')];
+        this._liveW = [...body.querySelectorAll('[data-lw]')];
+        this._liveV = [...body.querySelectorAll('[data-lv]')];
         this.lastHtml = html;
       }
       this.updateLive();
@@ -448,20 +478,34 @@
       if (!this.menu) return;
       const body = this.$('panelBody');
       if (!this.popVals || this.popMenu !== this.menu) { this.popVals = {}; this.popMenu = this.menu; }
-      body.querySelectorAll('[data-l]').forEach((el) => {
+      const els = this._liveL || (this._liveL = [...body.querySelectorAll('[data-l]')]);
+      for (let i = 0; i < els.length; i++) {
+        const el = els[i];
         const f = this.live[+el.dataset.l];
-        if (!f) return;
-        const v = f();
-        if (el.textContent === v) return;
+        if (!f) continue;
+        const v = String(f());
+        if (el.textContent === v) continue;
         el.textContent = v;
-        if (!el.classList.contains('lpop')) return;
+        if (!el.classList.contains('lpop')) continue;
         // panel yeniden çizilse bile önceki değer hatırlanır; değer değiştiyse zıplar
         const k = el.dataset.l, prev = this.popVals[k];
         this.popVals[k] = v;
         if (prev !== undefined && prev !== v) { el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
-      });
-      body.querySelectorAll('[data-lw]').forEach((el) => { const f = this.live[+el.dataset.lw]; if (f) el.style.width = f() + '%'; });
-      body.querySelectorAll('[data-lv]').forEach((el) => { const f = this.live[+el.dataset.lv]; if (f) el.style.setProperty('--v', String(f())); });
+      }
+      const ws = this._liveW || (this._liveW = [...body.querySelectorAll('[data-lw]')]);
+      for (let i = 0; i < ws.length; i++) {
+        const el = ws[i], f = this.live[+el.dataset.lw];
+        if (!f) continue;
+        const w = f() + '%';
+        if (el._pw !== w) { el._pw = w; el.style.width = w; }
+      }
+      const vs = this._liveV || (this._liveV = [...body.querySelectorAll('[data-lv]')]);
+      for (let i = 0; i < vs.length; i++) {
+        const el = vs[i], f = this.live[+el.dataset.lv];
+        if (!f) continue;
+        const sv = String(f());
+        if (el._pv !== sv) { el._pv = sv; el.style.setProperty('--v', sv); }
+      }
     }
 
     relStatus(a, b) {

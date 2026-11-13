@@ -71,6 +71,7 @@
       const mk = () => { const c = document.createElement('canvas'); c.width = Math.ceil(map.W * S); c.height = Math.ceil(map.H * S); return c; };
       this.baseLayer = mk();
       this.landLayer = mk();
+      this.mapLayer = mk();
       const b = this.baseLayer.getContext('2d');
       b.scale(S, S);
       b.fillStyle = this.seaPattern; b.fillRect(0, 0, map.W, map.H);
@@ -78,6 +79,7 @@
       for (const [w, a] of [[62, 0.06], [40, 0.08], [22, 0.11]]) { b.strokeStyle = `rgba(45,70,70,${a})`; b.lineWidth = w; b.stroke(this.coast); }
       b.setLineDash([2, 10]); b.strokeStyle = 'rgba(45,70,70,0.35)'; b.lineWidth = 1.6; b.stroke(this.coast); b.setLineDash([]);
       this.drawDecor(b);
+      this.mapLayer.getContext('2d').drawImage(this.baseLayer, 0, 0);
     }
 
     renderLandLayer() {
@@ -98,6 +100,17 @@
       c.fillStyle = this.grainPattern;
       c.fillRect(0, 0, g.map.W, g.map.H);
       c.globalCompositeOperation = 'source-over';
+      // iç şehir sınırlarını arazi katmanına bas (her karede binlerce çizgi tekrarını önler)
+      c.lineJoin = 'round'; c.lineCap = 'round';
+      c.strokeStyle = 'rgba(58,40,20,0.42)'; c.lineWidth = 1.8; c.stroke(this.inner);
+      // tek blit için deniz+kıyı ve kara katmanlarını önceden birleştir
+      const mc = this.mapLayer.getContext('2d');
+      mc.setTransform(1, 0, 0, 1, 0, 0);
+      mc.clearRect(0, 0, this.mapLayer.width, this.mapLayer.height);
+      mc.drawImage(this.baseLayer, 0, 0);
+      mc.drawImage(this.landLayer, 0, 0);
+      this._miniVer = -1;
+      this._brdVer = -1;
     }
 
     makeSeaTile() {
@@ -141,21 +154,80 @@
       return c;
     }
 
+    _addEdgePts(path, pts, lo) {
+      const n = pts.length;
+      if (!n) return;
+      path.moveTo(pts[0][0], pts[0][1]);
+      if (!lo || n <= 3) {
+        for (let i = 1; i < n; i++) path.lineTo(pts[i][0], pts[i][1]);
+      } else {
+        for (let i = 3; i < n - 1; i += 3) path.lineTo(pts[i][0], pts[i][1]);
+        path.lineTo(pts[n - 1][0], pts[n - 1][1]);
+      }
+    }
+
+    _mkChunks() {
+      const chunks = new Array(16);
+      for (let i = 0; i < 16; i++) {
+        chunks[i] = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity, hi: new Path2D(), lo: new Path2D(), has: false };
+      }
+      return chunks;
+    }
+
+    _pushChunkEdge(chunks, e, mW, mH) {
+      const pts = e.pts;
+      if (!pts.length) return;
+      let ex0 = Infinity, ey0 = Infinity, ex1 = -Infinity, ey1 = -Infinity;
+      for (let i = 0; i < pts.length; i++) {
+        const px = pts[i][0], py = pts[i][1];
+        if (px < ex0) ex0 = px; if (px > ex1) ex1 = px;
+        if (py < ey0) ey0 = py; if (py > ey1) ey1 = py;
+      }
+      const mx = (ex0 + ex1) * 0.5, my = (ey0 + ey1) * 0.5;
+      const gx = U.clamp((mx / mW * 4) | 0, 0, 3), gy = U.clamp((my / mH * 4) | 0, 0, 3);
+      const ch = chunks[gy * 4 + gx];
+      ch.has = true;
+      if (ex0 < ch.x0) ch.x0 = ex0; if (ey0 < ch.y0) ch.y0 = ey0;
+      if (ex1 > ch.x1) ch.x1 = ex1; if (ey1 > ch.y1) ch.y1 = ey1;
+      this._addEdgePts(ch.hi, pts, false);
+      this._addEdgePts(ch.lo, pts, true);
+    }
+
+    _strokeChunks(ctx, chunks, vx0, vy0, vx1, vy1, lo) {
+      for (let i = 0; i < 16; i++) {
+        const ch = chunks[i];
+        if (!ch.has || ch.x1 < vx0 || ch.x0 > vx1 || ch.y1 < vy0 || ch.y0 > vy1) continue;
+        ctx.stroke(lo ? ch.lo : ch.hi);
+      }
+    }
+
     rebuildDynamic() {
-      const g = this.game;
+      const g = this.game, mW = g.map.W, mH = g.map.H;
       this.version = g.version;
       this.renderLandLayer();
       this.border = new Path2D();
       this.warBorder = new Path2D(); // savaşan ülkelerin ortak sınırı kırmızı çizilir
       this.atkCache = new Map();
-      for (const e of g.map.edges) {
-        if (e.b < 0) continue;
+      const borderChunks = this._borderChunks = this._mkChunks();
+      const warChunks = this._warChunks = this._mkChunks();
+      let hasWar = false;
+      const buildCoast = !this._coastChunks;
+      const coastChunks = buildCoast ? (this._coastChunks = this._mkChunks()) : null;
+      const edges = g.map.edges;
+      for (let i = 0; i < edges.length; i++) {
+        const e = edges[i];
+        if (e.b < 0) {
+          if (buildCoast) this._pushChunkEdge(coastChunks, e, mW, mH);
+          continue;
+        }
         const oa = g.cities[e.a].owner, ob = g.cities[e.b].owner;
         if (oa === ob) continue;
         const war = !g.isRebel(oa) && !g.isRebel(ob) && g.atWar(oa, ob);
-        const target = war ? this.warBorder : this.border;
-        e.pts.forEach((pt, i) => (i ? target.lineTo(pt[0], pt[1]) : target.moveTo(pt[0], pt[1])));
+        if (war) hasWar = true;
+        this._addEdgePts(war ? this.warBorder : this.border, e.pts, true);
+        this._pushChunkEdge(war ? warChunks : borderChunks, e, mW, mH);
       }
+      this._hasWar = hasWar;
       // ülke etiket konumları
       this.labels = [];
       for (const c of g.countries) {
@@ -246,9 +318,7 @@
       const m = g.map, S = this.layerScale;
       const sx0 = U.clamp(vx0 - 4, 0, m.W), sy0 = U.clamp(vy0 - 4, 0, m.H), sx1 = U.clamp(vx1 + 4, 0, m.W), sy1 = U.clamp(vy1 + 4, 0, m.H);
       if (sx1 > sx0 && sy1 > sy0) {
-        for (const layer of [this.baseLayer, this.landLayer]) {
-          ctx.drawImage(layer, sx0 * S, sy0 * S, (sx1 - sx0) * S, (sy1 - sy0) * S, sx0, sy0, sx1 - sx0, sy1 - sy0);
-        }
+        ctx.drawImage(this.mapLayer, sx0 * S, sy0 * S, (sx1 - sx0) * S, (sy1 - sy0) * S, sx0, sy0, sx1 - sx0, sy1 - sy0);
       }
       ctx.lineJoin = 'round'; ctx.lineCap = 'round';
 
@@ -264,13 +334,38 @@
       const atk = this.activeAttacks(vx0, vy0, vx1, vy1);
       this.drawAttackFill(ctx, z, now, atk);
 
-      ctx.strokeStyle = 'rgba(58,40,20,0.42)'; ctx.lineWidth = 1.2 / z; ctx.stroke(this.inner);
-      ctx.strokeStyle = 'rgba(40,24,10,0.92)'; ctx.lineWidth = (2.2 + 1.6 * z) / z; ctx.stroke(this.border);
-      // savaşan ülkelerin sınırı: koyu zemin üstünde kırmızı
-      ctx.strokeStyle = 'rgba(40,12,8,0.9)'; ctx.lineWidth = (4.4 + 1.6 * z) / z; ctx.stroke(this.warBorder);
-      ctx.strokeStyle = 'rgba(206,34,22,0.95)'; ctx.lineWidth = (2.6 + 1.2 * z) / z; ctx.stroke(this.warBorder);
-      this.drawAttackEdges(ctx, z, now, atk);
-      ctx.strokeStyle = INK; ctx.lineWidth = (2 + 1.2 * z) / z; ctx.stroke(this.coast);
+      // ülke sınırları + kıyılar: kamera sabitken önbellek katmanından tek blit
+      const bw = Math.max(1, Math.round(this.vw * dpr)), bh = Math.max(1, Math.round(this.vh * dpr));
+      if (!this._brdCanvas || this._brdX !== cam.x || this._brdY !== cam.y || this._brdZ !== z ||
+          this._brdVw !== this.vw || this._brdVh !== this.vh || this._brdDpr !== dpr || this._brdVer !== this.version) {
+        const bcEl = this._brdCanvas || (this._brdCanvas = document.createElement('canvas'));
+        if (bcEl.width !== bw || bcEl.height !== bh) { bcEl.width = bw; bcEl.height = bh; }
+        const bc = bcEl.getContext('2d');
+        bc.setTransform(1, 0, 0, 1, 0, 0);
+        bc.clearRect(0, 0, bw, bh);
+        bc.setTransform(dpr * z, 0, 0, dpr * z, dpr * ox, dpr * oy);
+        bc.lineJoin = z < 0.85 ? 'bevel' : 'round';
+        bc.lineCap = 'round';
+        const pad = 16 / z, lo = z < 0.78;
+        bc.strokeStyle = 'rgba(40,24,10,0.92)'; bc.lineWidth = (2.2 + 1.6 * z) / z;
+        this._strokeChunks(bc, this._borderChunks, vx0 - pad, vy0 - pad, vx1 + pad, vy1 + pad, lo);
+        if (this._hasWar) {
+          bc.strokeStyle = 'rgba(40,12,8,0.9)'; bc.lineWidth = (4.4 + 1.6 * z) / z;
+          this._strokeChunks(bc, this._warChunks, vx0 - pad, vy0 - pad, vx1 + pad, vy1 + pad, lo);
+          bc.strokeStyle = 'rgba(206,34,22,0.95)'; bc.lineWidth = (2.6 + 1.2 * z) / z;
+          this._strokeChunks(bc, this._warChunks, vx0 - pad, vy0 - pad, vx1 + pad, vy1 + pad, lo);
+        }
+        bc.strokeStyle = INK; bc.lineWidth = (2 + 1.2 * z) / z;
+        this._strokeChunks(bc, this._coastChunks, vx0 - pad, vy0 - pad, vx1 + pad, vy1 + pad, lo);
+        this._brdX = cam.x; this._brdY = cam.y; this._brdZ = z;
+        this._brdVw = this.vw; this._brdVh = this.vh; this._brdDpr = dpr; this._brdVer = this.version;
+      }
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(this._brdCanvas, 0, 0);
+      if (atk.length) {
+        ctx.setTransform(dpr * z, 0, 0, dpr * z, dpr * ox, dpr * oy);
+        this.drawAttackEdges(ctx, z, now, atk);
+      }
 
       // ekran koordinatları
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -282,9 +377,17 @@
       this.drawFx(ctx, now);
       this.drawCommandHint(ctx);
 
-      const vg = ctx.createRadialGradient(this.vw / 2, this.vh / 2, Math.min(this.vw, this.vh) * 0.45, this.vw / 2, this.vh / 2, Math.max(this.vw, this.vh) * 0.75);
-      vg.addColorStop(0, 'rgba(70,45,15,0)'); vg.addColorStop(1, 'rgba(70,45,15,0.32)');
-      ctx.fillStyle = vg; ctx.fillRect(0, 0, this.vw, this.vh);
+      if (!this._vgCanvas || this._vgW !== this.vw || this._vgH !== this.vh) {
+        this._vgW = this.vw; this._vgH = this.vh;
+        const c = this._vgCanvas || (this._vgCanvas = document.createElement('canvas'));
+        const vw = Math.max(1, Math.ceil(this.vw * 0.25)), vh = Math.max(1, Math.ceil(this.vh * 0.25));
+        c.width = vw; c.height = vh;
+        const vc = c.getContext('2d');
+        const vg = vc.createRadialGradient(vw / 2, vh / 2, Math.min(vw, vh) * 0.45, vw / 2, vh / 2, Math.max(vw, vh) * 0.75);
+        vg.addColorStop(0, 'rgba(70,45,15,0)'); vg.addColorStop(1, 'rgba(70,45,15,0.32)');
+        vc.fillStyle = vg; vc.fillRect(0, 0, vw, vh);
+      }
+      ctx.drawImage(this._vgCanvas, 0, 0, this.vw, this.vh);
 
       if (this.frame % 3 === 0) this.drawMinimap();
     }
@@ -300,9 +403,10 @@
       for (const { e, other } of this.edgesByCity[to]) {
         if (fromOnly !== undefined ? other === fromOnly : g.friendly(owner, g.cities[other].owner)) edges.push(e);
       }
-      const pts = [], path = new Path2D();
+      const pts = [], path = new Path2D(), fillPath = new Path2D();
       for (const e of edges) {
-        e.pts.forEach((pt, i) => (i ? path.lineTo(pt[0], pt[1]) : path.moveTo(pt[0], pt[1])));
+        this._addEdgePts(path, e.pts, false);
+        this._addEdgePts(fillPath, e.pts, true);
         for (let i = 0; i < e.pts.length; i += 2) pts.push(e.pts[i]);
       }
       const city = g.cities[to];
@@ -312,14 +416,19 @@
         if (pts.length) { for (const p of pts) { const d = Math.hypot(v[0] - p[0], v[1] - p[1]); if (d < md) md = d; } } else md = Math.hypot(v[0] - city.x, v[1] - city.y);
         if (md > maxR) maxR = md;
       }
-      c = { edges, path, maxR: maxR + 8 };
+      c = { edges, path, fillPath, maxR: maxR + 8 };
       this.atkCache.set(key, c);
       return c;
     }
 
     activeAttacks(vx0, vy0, vx1, vy1) {
-      const g = this.game, list = [], seen = new Set();
-      for (const u of g.units) {
+      const g = this.game;
+      const list = this._atkList || (this._atkList = []);
+      list.length = 0;
+      const seen = this._seenAtk || (this._seenAtk = new Set());
+      seen.clear();
+      for (let i = 0; i < g.units.length; i++) {
+        const u = g.units[i];
         if (u.dead || !u.move) continue;
         const m = u.move;
         if (m.kind !== 'attack' && m.kind !== 'battle') continue;
@@ -342,29 +451,37 @@
     drawAttackFill(ctx, z, now, list) {
       if (!list.length) return;
       const g = this.game;
+      const atkCols = this._atkCols || (this._atkCols = {});
+      if (this._atkColVer !== this.version) { this._atkColVer = this.version; for (const k in atkCols) delete atkCols[k]; }
       ctx.save();
       ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-      for (const a of list) {
-        const { u, m, geo } = a;
+      for (let i = 0; i < list.length; i++) {
+        const a = list[i], { u, m, geo } = a;
+        if (!a.battle && !geo.edges.length) continue;
         ctx.save();
         ctx.clip(this.cityPaths[m.to]);
         if (!a.battle) {
           // yürüyüş: sınır boyunca hafif kırmızı gölge
           const pulse = 0.5 + 0.5 * Math.sin(now / 240);
-          if (geo.edges.length) { ctx.strokeStyle = `rgba(214,40,26,${0.08 + 0.1 * pulse})`; ctx.lineWidth = (36 + 12 * pulse) / z; ctx.stroke(geo.path); }
+          ctx.strokeStyle = `rgba(214,40,26,${0.08 + 0.1 * pulse})`; ctx.lineWidth = (36 + 12 * pulse) / z; ctx.stroke(geo.fillPath);
           ctx.restore();
           continue;
         }
         const R = a.vis * geo.maxR;
-        const p = G.PALETTE[g.cityColorIdx({ owner: u.owner })];
-        const fill = `hsla(${p.h},${p.s}%,${p.l}%,0.94)`;
-        if (geo.edges.length) {
-          ctx.strokeStyle = 'rgba(190,28,18,0.95)'; ctx.lineWidth = 2 * R + 7 / z; ctx.stroke(geo.path);
-          ctx.strokeStyle = fill; ctx.lineWidth = 2 * R; ctx.stroke(geo.path);
-        } else {
-          const c = g.cities[m.to];
-          ctx.fillStyle = 'rgba(190,28,18,0.95)'; ctx.beginPath(); ctx.arc(c.x, c.y, R + 4 / z, 0, Math.PI * 2); ctx.fill();
-          ctx.fillStyle = fill; ctx.beginPath(); ctx.arc(c.x, c.y, R, 0, Math.PI * 2); ctx.fill();
+        if (R > 0.2) {
+          let fill = atkCols[u.owner];
+          if (!fill) {
+            const p = G.PALETTE[g.cityColorIdx({ owner: u.owner })];
+            fill = atkCols[u.owner] = `hsla(${p.h},${p.s}%,${p.l}%,0.94)`;
+          }
+          if (geo.edges.length) {
+            ctx.strokeStyle = 'rgba(190,28,18,0.95)'; ctx.lineWidth = 2 * R + 7 / z; ctx.stroke(geo.fillPath);
+            ctx.strokeStyle = fill; ctx.lineWidth = 2 * R; ctx.stroke(geo.fillPath);
+          } else {
+            const c = g.cities[m.to];
+            ctx.fillStyle = 'rgba(190,28,18,0.95)'; ctx.beginPath(); ctx.arc(c.x, c.y, R + 4 / z, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = fill; ctx.beginPath(); ctx.arc(c.x, c.y, R, 0, Math.PI * 2); ctx.fill();
+          }
         }
         ctx.restore();
       }
@@ -375,12 +492,15 @@
     drawAttackEdges(ctx, z, now, list) {
       if (!list.length) return;
       const pulse = 0.5 + 0.5 * Math.sin(now / 200);
+      const lo = z < 0.78;
       ctx.save();
       ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-      for (const a of list) {
+      for (let i = 0; i < list.length; i++) {
+        const a = list[i];
         if (!a.geo.edges.length) continue;
-        ctx.strokeStyle = 'rgba(40,10,6,0.85)'; ctx.lineWidth = (6.4 + 1.6 * z) / z; ctx.stroke(a.geo.path);
-        ctx.strokeStyle = `rgba(${Math.round(210 + 40 * pulse)},${Math.round(30 + 40 * pulse)},20,1)`; ctx.lineWidth = (4 + 1.4 * z + 2 * pulse) / z; ctx.stroke(a.geo.path);
+        const p = lo ? a.geo.fillPath : a.geo.path;
+        ctx.strokeStyle = 'rgba(40,10,6,0.85)'; ctx.lineWidth = (6.4 + 1.6 * z) / z; ctx.stroke(p);
+        ctx.strokeStyle = `rgba(${Math.round(210 + 40 * pulse)},${Math.round(30 + 40 * pulse)},20,1)`; ctx.lineWidth = (4 + 1.4 * z + 2 * pulse) / z; ctx.stroke(p);
       }
       ctx.restore();
     }
@@ -467,23 +587,26 @@
     }
 
     drawLabels(ctx, z) {
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       const alpha = z > 1.1 ? Math.max(0, 0.5 - (z - 1.1)) : 0.5;
-      if (alpha > 0.02) {
-        for (const L of this.labels) {
-          const [sx, sy] = this.toScreen(L.x, L.y);
-          if (sx < -300 || sx > this.vw + 300 || sy < -100 || sy > this.vh + 100) continue;
-          const fs = U.clamp(70 * z * Math.sqrt(Math.min(1.6, L.n / 17)), 10, 64);
-          ctx.font = `${fs}px ${FONT_SC}`;
-          try { ctx.letterSpacing = Math.round(fs * 0.18) + 'px'; } catch (e) { /* eski tarayıcı */ }
-          ctx.globalAlpha = alpha;
-          ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(240,228,196,0.7)';
-          ctx.strokeText(L.c.name.toLocaleUpperCase('tr'), sx, sy);
-          ctx.fillStyle = L.c.dark; ctx.fillText(L.c.name.toLocaleUpperCase('tr'), sx, sy);
-        }
+      if (alpha <= 0.02) return;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.globalAlpha = alpha;
+      ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(240,228,196,0.7)';
+      let lastLs = '';
+      for (let i = 0; i < this.labels.length; i++) {
+        const L = this.labels[i];
+        const [sx, sy] = this.toScreen(L.x, L.y);
+        if (sx < -300 || sx > this.vw + 300 || sy < -100 || sy > this.vh + 100) continue;
+        const fs = U.clamp(70 * z * Math.sqrt(Math.min(1.6, L.n / 17)), 10, 64);
+        ctx.font = `${fs}px ${FONT_SC}`;
+        const ls = Math.round(fs * 0.18) + 'px';
+        if (ls !== lastLs) { lastLs = ls; try { ctx.letterSpacing = ls; } catch (e) { /* eski tarayıcı */ } }
+        const up = L.upper || (L.upper = L.c.name.toLocaleUpperCase('tr'));
+        ctx.strokeText(up, sx, sy);
+        ctx.fillStyle = L.c.dark; ctx.fillText(up, sx, sy);
       }
       ctx.globalAlpha = 1;
-      try { ctx.letterSpacing = '0px'; } catch (e) { /* */ }
+      if (lastLs) try { ctx.letterSpacing = '0px'; } catch (e) { /* */ }
     }
 
     star(ctx, x, y, r, fill) {
@@ -499,34 +622,48 @@
     drawCityIcons(ctx, visible, z) {
       const g = this.game, s = this.ui.scale;
       const showNames = z >= 0.7;
-      const capitals = new Set(g.countries.filter((c) => c.alive && c.capital >= 0).map((c) => c.capital));
-      for (const city of visible) {
-        const [sx, sy] = this.toScreen(city.x, city.y);
-        if (capitals.has(city.id)) this.star(ctx, sx, sy - 24 * s, 11 * s, '#f1c94f');
-        // fabrikalar (fotoğraftaki noktalar gibi, küçük binalar)
-        const icons = [];
-        for (let i = 0; i < city.factories; i++) icons.push('f');
-        // inşaatı süren fabrikalar: soluk, ilerleme çubuklu
-        for (const t1 of city.building) icons.push('b' + U.clamp(1 - (t1 - g.time) / G.CFG.factoryBuildTime, 0, 1));
-        if (city.cityDef) icons.push('d');
-        if (city.airDef) icons.push('a');
-        if (icons.length) {
-          const w = 11 * s, x0 = sx - (icons.length * w) / 2;
-          icons.forEach((k, i) => (k[0] === 'b' ? this.buildIcon(ctx, x0 + i * w + w / 2, sy + 24 * s, s, +k.slice(1)) : this.icon(ctx, k, x0 + i * w + w / 2, sy + 24 * s, s)));
+      let capitals = this._capSet;
+      if (!capitals || this._capVer !== this.version) {
+        capitals = this._capSet || (this._capSet = new Set());
+        capitals.clear();
+        for (let i = 0; i < g.countries.length; i++) {
+          const c = g.countries[i];
+          if (c.alive && c.capital >= 0) capitals.add(c.capital);
         }
-        const mk = this.ui.targeting && this.ui.targeting.mark ? this.ui.targeting.mark(city.id) : null;
+        this._capVer = this.version;
+      }
+      const w = 11 * s, invDur = 1 / G.CFG.factoryBuildTime;
+      const markFn = this.ui.targeting && this.ui.targeting.mark;
+      const nameFont = showNames ? `italic ${11.5 * s}px ${FONT}` : '';
+      const markFont = markFn ? `bold ${11 * s}px ${FONT}` : '';
+      let curFont = '';
+      for (let i = 0; i < visible.length; i++) {
+        const city = visible[i];
+        const [sx, sy] = this.toScreen(city.x, city.y);
+        const isCap = capitals.has(city.id);
+        if (isCap) this.star(ctx, sx, sy - 24 * s, 11 * s, '#f1c94f');
+        const nb = city.building.length, cnt = city.factories + nb + (city.cityDef ? 1 : 0) + (city.airDef ? 1 : 0);
+        if (cnt > 0) {
+          const x0 = sx - (cnt * w) / 2 + w / 2, iy = sy + 24 * s;
+          let idx = 0;
+          for (let j = 0; j < city.factories; j++) this.icon(ctx, 'f', x0 + (idx++) * w, iy, s);
+          for (let j = 0; j < nb; j++) this.buildIcon(ctx, x0 + (idx++) * w, iy, s, U.clamp(1 - (city.building[j] - g.time) * invDur, 0, 1));
+          if (city.cityDef) this.icon(ctx, 'd', x0 + (idx++) * w, iy, s);
+          if (city.airDef) this.icon(ctx, 'a', x0 + (idx++) * w, iy, s);
+        }
+        const mk = markFn ? markFn(city.id) : null;
         if (mk) {
           const txt = mk === 'give' ? 'Ver' : 'Al';
-          ctx.font = `bold ${11 * s}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-          const bw = ctx.measureText(txt).width + 12 * s, bx = sx + 22 * s, by = sy - 16 * s;
+          if (curFont !== markFont) { ctx.font = curFont = markFont; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; }
+          const bw = this.measureCached(ctx, markFont, txt) + 12 * s, bx = sx + 22 * s, by = sy - 16 * s;
           ctx.fillStyle = mk === 'give' ? '#8a5a12' : '#2f5a1e';
           ctx.beginPath(); ctx.ellipse(bx, by, bw / 2, 9 * s, 0, 0, Math.PI * 2); ctx.fill();
           ctx.lineWidth = 1.5; ctx.strokeStyle = '#fbf1d6'; ctx.stroke();
           ctx.fillStyle = '#fff'; ctx.fillText(txt, bx, by + 0.5);
         }
         if (showNames) {
-          ctx.font = `italic ${11.5 * s}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-          const ny = sy - (capitals.has(city.id) ? 41 : 22) * s;
+          if (curFont !== nameFont) { ctx.font = curFont = nameFont; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; }
+          const ny = sy - (isCap ? 41 : 22) * s;
           ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(240,228,196,0.85)'; ctx.strokeText(city.name, sx, ny);
           ctx.fillStyle = INK; ctx.fillText(city.name, sx, ny);
         }
@@ -582,14 +719,38 @@
       ctx.restore();
     }
 
+    measureCached(ctx, fontKey, txt) {
+      let cache = this._twCache;
+      if (!cache) cache = this._twCache = new Map();
+      let byFont = cache.get(fontKey);
+      if (!byFont) {
+        if (cache.size > 16) cache.clear();
+        byFont = new Map();
+        cache.set(fontKey, byFont);
+      }
+      let w = byFont.get(txt);
+      if (w === undefined) {
+        if (byFont.size > 600) byFont.clear();
+        w = ctx.measureText(txt).width;
+        byFont.set(txt, w);
+      }
+      return w;
+    }
+
+    findArmy(id) {
+      const arr = this.game.armies;
+      for (let i = 0; i < arr.length; i++) if (arr[i].id === id) return arr[i];
+      return null;
+    }
+
     token(ctx, x, y, u, opts) {
       const g = this.game, s = this.ui.scale;
       const c = g.countries[u.owner];
       const txt = U.fmtK(u.troops);
-      ctx.font = `bold ${12 * s}px ${FONT}`;
-      const w = ctx.measureText(txt).width + 14 * s, h = 18 * s;
+      const font = `bold ${12 * s}px ${FONT}`;
+      ctx.font = font;
+      const w = this.measureCached(ctx, font, txt) + 14 * s, h = 18 * s;
       const x0 = x - w / 2, y0 = y - h / 2;
-      if (opts && opts.selected) { ctx.shadowColor = '#ffd75e'; ctx.shadowBlur = 14; }
       ctx.beginPath();
       ctx.moveTo(x0 + 3, y0); ctx.lineTo(x0 + w - 3, y0); ctx.quadraticCurveTo(x0 + w, y0, x0 + w, y0 + 3);
       ctx.lineTo(x0 + w, y0 + h - 3); ctx.quadraticCurveTo(x0 + w, y0 + h, x0 + w - 3, y0 + h);
@@ -597,7 +758,10 @@
       ctx.lineTo(x0 + 3, y0 + h); ctx.quadraticCurveTo(x0, y0 + h, x0, y0 + h - 3);
       ctx.lineTo(x0, y0 + 3); ctx.quadraticCurveTo(x0, y0, x0 + 3, y0); ctx.closePath();
       ctx.fillStyle = c.isRebel ? '#2a2a2a' : c.dark; ctx.fill();
-      ctx.shadowBlur = 0;
+      if (opts && opts.selected) {
+        // GPU shadowBlur yerine hafif altın dış hale: belirgin ve çok daha hızlı
+        ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(255,215,90,0.45)'; ctx.stroke();
+      }
       ctx.lineWidth = c.isPlayer ? 2.2 : 1.4;
       ctx.strokeStyle = opts && opts.selected ? '#ffe27a' : c.isPlayer ? '#e2b84a' : c.color;
       ctx.stroke();
@@ -609,7 +773,7 @@
       ctx.fillText(txt, x, y + 0.5);
       if (u.weak) this.weakBadge(ctx, x, y0 - 9 * s, 15 * s);
       if (u.army !== null) {
-        const army = g.armies.find((a) => a.id === u.army);
+        const army = this.findArmy(u.army);
         if (army) {
           ctx.beginPath(); ctx.arc(x0 + w, y0, 6.5 * s, 0, Math.PI * 2);
           ctx.fillStyle = army.mode === 'attack' ? '#a3271c' : '#2c5a8c'; ctx.fill();
@@ -623,45 +787,61 @@
 
     drawTokens(ctx, visible, now) {
       const g = this.game, ui = this.ui, s = ui.scale;
-      this.tokenHits = [];
-      const byCity = new Map();
-      for (const u of g.units) {
-        if (u.dead || u.move || u.city === null) continue;
-        if (!byCity.has(u.city)) byCity.set(u.city, []);
-        byCity.get(u.city).push(u);
+      const hits = this.tokenHits = [];
+      const visSet = this._visSet || (this._visSet = new Set());
+      visSet.clear();
+      for (let i = 0; i < visible.length; i++) visSet.add(visible[i].id);
+      const byCity = this._byCity || (this._byCity = new Map());
+      for (const arr of byCity.values()) arr.length = 0;
+      for (let i = 0; i < g.units.length; i++) {
+        const u = g.units[i];
+        if (u.dead || u.move || u.city === null || !visSet.has(u.city)) continue;
+        let arr = byCity.get(u.city);
+        if (!arr) { arr = []; byCity.set(u.city, arr); }
+        arr.push(u);
       }
-      const visSet = new Set(visible.map((c) => c.id));
+      const fs = this.landFont();
+      const rowH = fs * 1.3;
+      const font = `bold ${fs}px ${FONT}`;
+      const armyFont = `bold ${8.5 * s}px ${FONT}`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
       for (const [cityId, list] of byCity) {
-        if (!visSet.has(cityId)) continue;
+        if (!list.length) continue;
         const city = g.cities[cityId];
         const [sx, sy] = this.toScreen(city.x, city.y);
-        list.sort((a, b) => (a.owner === g.playerId) - (b.owner === g.playerId) || a.id - b.id);
+        if (list.length > 1) list.sort((a, b) => (a.owner === g.playerId) - (b.owner === g.playerId) || a.id - b.id);
         // asker sayıları doğrudan toprağın üzerine yazılır; birden çok birlik varsa alt alta dizilir
-        const rowH = this.landFont() * 1.3;
         const top = sy - 2 * s - ((list.length - 1) * rowH) / 2;
-        list.forEach((u, i) => {
-          const r = this.landToken(ctx, sx, top + i * rowH, u, { selected: ui.selUnit === u.id, marked: ui.marked.has(u.id) });
-          this.tokenHits.push({ unit: u, ...r });
-        });
+        for (let i = 0; i < list.length; i++) {
+          const u = list[i];
+          const r = this.landToken(ctx, sx, top + i * rowH, u, { selected: ui.selUnit === u.id, marked: ui.marked.has(u.id) }, fs, font, armyFont);
+          hits.push({ unit: u, ...r });
+        }
       }
     }
 
     landFont() { return U.clamp(15 * this.ui.scale * (0.72 + 0.5 * Math.min(this.cam.zoom, 1.6)), 11 * this.ui.scale, 25 * this.ui.scale); }
 
     // Kara üzerine yazılmış asker sayısı: parşömen renkli halka + ülkenin koyu rengi
-    landToken(ctx, x, y, u, opts) {
+    landToken(ctx, x, y, u, opts, fsArg, fontArg, armyFontArg) {
       const g = this.game, s = this.ui.scale;
       const c = g.countries[u.owner];
       const txt = U.fmtK(u.troops);
-      const fs = this.landFont();
-      ctx.font = `bold ${fs}px ${FONT}`;
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
-      const tw = ctx.measureText(txt).width, w = tw + 12 * s, h = fs * 1.25;
+      const fs = fsArg || this.landFont();
+      const font = fontArg || `bold ${fs}px ${FONT}`;
+      ctx.font = font;
+      if (!fsArg) { ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round'; }
+      const tw = this.measureCached(ctx, font, txt), w = tw + 12 * s, h = fs * 1.25;
       const x0 = x - w / 2, y0 = y - h / 2;
-      ctx.lineWidth = fs * 0.4; ctx.strokeStyle = 'rgba(248,240,216,0.93)';
-      if (opts && opts.selected) { ctx.shadowColor = '#ffcf4a'; ctx.shadowBlur = 16; ctx.strokeStyle = 'rgba(255,236,160,1)'; }
+      if (opts && opts.selected) {
+        ctx.lineWidth = fs * 0.68; ctx.strokeStyle = 'rgba(255,207,74,0.45)';
+        ctx.strokeText(txt, x, y);
+        ctx.strokeStyle = 'rgba(255,236,160,1)';
+      } else {
+        ctx.strokeStyle = 'rgba(248,240,216,0.93)';
+      }
+      ctx.lineWidth = fs * 0.4;
       ctx.strokeText(txt, x, y);
-      ctx.shadowBlur = 0;
       ctx.fillStyle = c.isRebel ? '#1d1d1d' : c.dark;
       ctx.fillText(txt, x, y + 0.5);
       if (c.isPlayer) {
@@ -674,12 +854,12 @@
         ctx.strokeRect(x0 - 2, y0 - 2, w + 4, h + 4); ctx.setLineDash([]);
       }
       if (u.army !== null) {
-        const army = g.armies.find((a) => a.id === u.army);
+        const army = this.findArmy(u.army);
         if (army) {
           ctx.beginPath(); ctx.arc(x0 + w, y0 + 1, 6.5 * s, 0, Math.PI * 2);
           ctx.fillStyle = army.mode === 'attack' ? '#a3271c' : '#2c5a8c'; ctx.fill();
           ctx.lineWidth = 1; ctx.strokeStyle = '#fbf1d6'; ctx.stroke();
-          ctx.fillStyle = '#fff'; ctx.font = `bold ${8.5 * s}px ${FONT}`;
+          ctx.fillStyle = '#fff'; ctx.font = armyFontArg || `bold ${8.5 * s}px ${FONT}`;
           ctx.fillText(army.mode === 'attack' ? 'T' : 'S', x0 + w, y0 + 1.5);
         }
       }
@@ -688,22 +868,23 @@
 
     drawMoving(ctx, now) {
       const g = this.game, s = this.ui.scale;
-      for (const u of g.units) {
+      for (let i = 0; i < g.units.length; i++) {
+        const u = g.units[i];
         if (u.dead || !u.move) continue;
         const m = u.move;
         const [wx, wy] = g.unitPos(u);
         const [sx, sy] = this.toScreen(wx, wy);
-        if (sx < -80 || sx > this.vw + 80 || sy < -80 || sy > this.vh + 80) {
-          if (m.kind !== 'battle') continue;
-        }
         const dest = g.cities[m.to];
         const [dx, dy] = this.toScreen(dest.x, dest.y);
+        const sOff = sx < -80 || sx > this.vw + 80 || sy < -80 || sy > this.vh + 80;
+        if (sOff && (m.kind !== 'battle' || dx < -80 || dx > this.vw + 80 || dy < -80 || dy > this.vh + 80)) continue;
         const hostile = m.kind === 'attack' || m.kind === 'battle' || (m.kind === 'para' && !g.friendly(u.owner, dest.owner));
+        const ang = Math.atan2(dy - sy, dx - sx);
         let bob = 0;
         if (m.kind === 'move' || m.kind === 'retreat') {
           // yürüyüş: birlik hafifçe sallanır, arkasında toz bulutu kalkar
           bob = Math.sin(now / 95 + u.id) * 1.6 * s;
-          const a = Math.atan2(dy - sy, dx - sx), ca = Math.cos(a), sa = Math.sin(a);
+          const ca = Math.cos(ang), sa = Math.sin(ang);
           for (let k = 0; k < 4; k++) {
             const ph = (now / 520 + k / 4 + u.id * 0.13) % 1;
             const back = (10 + ph * 26) * s, side = Math.sin((ph + k) * 9) * 4 * s;
@@ -717,40 +898,61 @@
           ctx.lineWidth = m.back ? 3 : 2.2;
           ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(dx, dy); ctx.stroke(); ctx.setLineDash([]);
           // ok ucu
-          const a = Math.atan2(dy - sy, dx - sx);
           ctx.fillStyle = ctx.strokeStyle;
-          ctx.beginPath(); ctx.moveTo(dx, dy); ctx.lineTo(dx - Math.cos(a - 0.4) * 11, dy - Math.sin(a - 0.4) * 11); ctx.lineTo(dx - Math.cos(a + 0.4) * 11, dy - Math.sin(a + 0.4) * 11); ctx.fill();
+          ctx.beginPath(); ctx.moveTo(dx, dy); ctx.lineTo(dx - Math.cos(ang - 0.4) * 11, dy - Math.sin(ang - 0.4) * 11); ctx.lineTo(dx - Math.cos(ang + 0.4) * 11, dy - Math.sin(ang + 0.4) * 11); ctx.fill();
         } else {
           // muharebe
           const pulse = 0.5 + 0.5 * Math.sin(now / 120);
           ctx.beginPath(); ctx.arc(dx, dy, (22 + 6 * pulse) * s, 0, Math.PI * 2);
           ctx.strokeStyle = `rgba(190,30,20,${0.5 + 0.4 * pulse})`; ctx.lineWidth = 3; ctx.stroke();
           this.swords(ctx, (sx + dx) / 2, (sy + dy) / 2, s);
-          // ele geçirme yüzdesi
-          const pct = '%' + Math.round(100 * (m.prog || 0));
-          ctx.font = `bold ${13 * s}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
-          ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(248,240,216,0.95)'; ctx.strokeText(pct, dx, dy + 36 * s);
-          ctx.fillStyle = '#a3170d'; ctx.fillText(pct, dx, dy + 36 * s);
+          (this._mvPcts || (this._mvPcts = [])).push(dx, dy + 36 * s, '%' + Math.round(100 * (m.prog || 0)));
         }
         if (m.kind === 'para') {
           ctx.font = `${20 * s}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-          ctx.fillStyle = INK; ctx.save(); ctx.translate(sx, sy - 18 * s); ctx.rotate(Math.atan2(dy - sy, dx - sx));
+          ctx.fillStyle = INK; ctx.save(); ctx.translate(sx, sy - 18 * s); ctx.rotate(ang);
           ctx.fillText('✈︎', 0, 0); ctx.restore();
         }
-        this.token(ctx, sx, sy + bob, u, {});
+        (this._mvToks || (this._mvToks = [])).push(sx, sy + bob, u);
+      }
+      const pcts = this._mvPcts;
+      if (pcts && pcts.length) {
+        ctx.font = `bold ${13 * s}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+        ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(248,240,216,0.95)'; ctx.fillStyle = '#a3170d';
+        for (let i = 0; i < pcts.length; i += 3) {
+          ctx.strokeText(pcts[i + 2], pcts[i], pcts[i + 1]);
+          ctx.fillText(pcts[i + 2], pcts[i], pcts[i + 1]);
+        }
+        pcts.length = 0;
+      }
+      const toks = this._mvToks;
+      if (toks && toks.length) {
+        for (let i = 0; i < toks.length; i += 3) this.token(ctx, toks[i], toks[i + 1], toks[i + 2], {});
+        toks.length = 0;
       }
     }
 
     swords(ctx, x, y, s) {
-      ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
-      ctx.strokeStyle = '#2a1a0c'; ctx.lineWidth = 3; ctx.lineCap = 'round';
-      for (const k of [-1, 1]) {
-        ctx.beginPath(); ctx.moveTo(-9 * k, -9); ctx.lineTo(9 * k, 9); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(-9 * k + 4 * k, 3 + 0); ctx.lineTo(3 * k, -4); ctx.stroke();
+      const k = s + ':' + this.dpr;
+      let spr = this._swordSpr;
+      if (!spr || this._swordKey !== k) {
+        const sc = Math.max(1, s * (this.dpr || 1)), sz = 26;
+        spr = this._swordSpr = document.createElement('canvas');
+        spr.width = Math.ceil(sz * sc); spr.height = Math.ceil(sz * sc);
+        const scx = spr.getContext('2d');
+        scx.setTransform(sc, 0, 0, sc, spr.width / 2, spr.height / 2);
+        scx.strokeStyle = '#2a1a0c'; scx.lineWidth = 3; scx.lineCap = 'round';
+        for (const d of [-1, 1]) {
+          scx.beginPath(); scx.moveTo(-9 * d, -9); scx.lineTo(9 * d, 9); scx.stroke();
+          scx.beginPath(); scx.moveTo(-5 * d, 3); scx.lineTo(3 * d, -4); scx.stroke();
+        }
+        scx.strokeStyle = '#e8d9b0'; scx.lineWidth = 1.3;
+        for (const d of [-1, 1]) { scx.beginPath(); scx.moveTo(-9 * d, -9); scx.lineTo(7 * d, 7); scx.stroke(); }
+        this._swordKey = k;
+        this._swordW = sz * s;
       }
-      ctx.strokeStyle = '#e8d9b0'; ctx.lineWidth = 1.3;
-      for (const k of [-1, 1]) { ctx.beginPath(); ctx.moveTo(-9 * k, -9); ctx.lineTo(7 * k, 7); ctx.stroke(); }
-      ctx.restore();
+      const w = this._swordW;
+      ctx.drawImage(spr, x - w / 2, y - w / 2, w, w);
     }
 
     drawProjectiles(ctx) {
@@ -901,21 +1103,27 @@
       const W = this.mini.width, H = this.mini.height;
       const sc = Math.min(W / m.W, H / m.H);
       const ox = (W - m.W * sc) / 2, oy = (H - m.H * sc) / 2;
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.fillStyle = '#aebdaf'; ctx.fillRect(0, 0, W, H);
-      ctx.drawImage(this.baseLayer, ox, oy, m.W * sc, m.H * sc);
-      ctx.drawImage(this.landLayer, ox, oy, m.W * sc, m.H * sc);
-      ctx.setTransform(sc, 0, 0, sc, ox, oy);
-      ctx.lineJoin = 'round';
-      ctx.strokeStyle = 'rgba(40,24,10,0.9)'; ctx.lineWidth = 2.2 / sc * (W / 460); ctx.stroke(this.border);
-      ctx.strokeStyle = INK; ctx.lineWidth = 2 / sc * (W / 460); ctx.stroke(this.coast);
-      // başkent noktası
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      for (const c of g.countries) {
-        if (!c.alive || c.capital < 0) continue;
-        const cc = g.cities[c.capital];
-        this.miniStar(ctx, ox + cc.x * sc, oy + cc.y * sc, c.isPlayer ? 6 * this.dpr : 4 * this.dpr, c.isPlayer ? '#ffd75e' : '#f1e2b8');
+      if (!this.miniLayer || this._miniVer !== this.version || this._miniW !== W || this._miniH !== H) {
+        const mc = this.miniLayer || (this.miniLayer = document.createElement('canvas'));
+        mc.width = W; mc.height = H;
+        const mctx = mc.getContext('2d');
+        mctx.setTransform(1, 0, 0, 1, 0, 0);
+        mctx.fillStyle = '#aebdaf'; mctx.fillRect(0, 0, W, H);
+        mctx.drawImage(this.mapLayer, ox, oy, m.W * sc, m.H * sc);
+        mctx.setTransform(sc, 0, 0, sc, ox, oy);
+        mctx.lineJoin = 'round';
+        mctx.strokeStyle = 'rgba(40,24,10,0.9)'; mctx.lineWidth = 2.2 / sc * (W / 460); mctx.stroke(this.border);
+        mctx.strokeStyle = INK; mctx.lineWidth = 2 / sc * (W / 460); mctx.stroke(this.coast);
+        mctx.setTransform(1, 0, 0, 1, 0, 0);
+        for (const c of g.countries) {
+          if (!c.alive || c.capital < 0) continue;
+          const cc = g.cities[c.capital];
+          this.miniStar(mctx, ox + cc.x * sc, oy + cc.y * sc, c.isPlayer ? 6 * this.dpr : 4 * this.dpr, c.isPlayer ? '#ffd75e' : '#f1e2b8');
+        }
+        this._miniVer = this.version; this._miniW = W; this._miniH = H;
       }
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(this.miniLayer, 0, 0);
       // muharebeler
       for (const u of g.units) {
         if (u.dead || !u.move || (u.move.kind !== 'battle' && u.move.kind !== 'attack')) continue;

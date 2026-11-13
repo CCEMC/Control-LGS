@@ -458,8 +458,10 @@
       }
       if (e.pointerType !== 'touch') {
         const [wx, wy] = renderer.toWorld(e.clientX, e.clientY);
-        ui.hoverCity = renderer.cityAt(wx, wy);
-        ui.tooltip(ui.hoverCity, e.clientX, e.clientY);
+        const prev = ui.hoverCity;
+        const next = (ui.hoverCity = renderer.cityAt(wx, wy));
+        if (next === prev && next !== null) ui.moveTooltip(e.clientX, e.clientY);
+        else if (next !== null || prev !== null) ui.tooltip(next, e.clientX, e.clientY);
       }
     });
     const up = (e) => {
