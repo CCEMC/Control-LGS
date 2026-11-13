@@ -60,6 +60,13 @@ bir sonraki açılışta yeni sürümü alır.
 - Uygulama arka plandayken oyun duraklar
 - **Ses ve müzik** (dosyasız, tamamı tarayıcıda üretilir): barışta sakin müzik, savaşta taiko davullu savaş müziği, çatışmada daha yoğun hali;
   kılıç sesleri, savaş boruları, fanfar, füze/patlama, para ve arayüz sesleri. Üst çubuktaki 🔊 düğmesi (ya da **M**) sesi açar/kapatır.
+- **Harita tipleri** (giriş ekranında küçük önizlemeleriyle seçilir; çevrimiçide oda sahibi seçer):
+  **Kıta** (klasik, körfezli ve yarımadalı), **Pangea** (yuvarlak dev kıta), **Takımadalar** (dar kara köprüleriyle bağlı adalar,
+  yaklaşık ülke başına bir ada), **İç Deniz** (ortadaki denizi çevreleyen halka), **İkiz Kıtalar** (tek köprüyle bağlı iki kıta) ve **Rastgele**.
+  Her tipte ülke başına ~19 şehir olacak şekilde harita boyutu kendiliğinden ayarlanır; ülkeler eşit büyüklükte ve bütündür.
+- **Askeri Yönetim:** toplam/cephedeki/zayıf asker özeti ve güç çarpanları, halka göstergeli asker üretimi (+1k/+5k/+10k),
+  saldırı/savunma ekipman kartları, ideoloji geliştirme kartları ve ordu kartları (taarruz/savunma anahtarı).
+- **Mağaza:** hazine ve sonraki gelir çubuğu, kategoriye göre renkli simgeli ürün kartları, aktif etkiler, eksik para göstergesi.
 - **Oyun menüsü** (☰ düğmesi ya da **Esc**): duraklat (tek oyunculuda), ses aç/kapat, **Nasıl Oynanır**, kaydedip ana menüye dön.
 - **Diplomasi ekranı:** savaş/müttefik/barış durumuna göre sıralı ülke listesi; seçili ülkenin ilişki ölçeği, bekleyen teklifler,
   savaş hakkı geri sayımı, güç dengesi (asker, şehir, fabrika, hazine karşılaştırması) ve haritada başkentini gösterme.
@@ -123,8 +130,9 @@ fiyatı seviye başına artar (6 → 9 → 12₺, Komünizm'de %10 ucuz). Etkile
 
 ## Dosyalar
 
-- `js/mapgen.js` — Voronoi + kıvrımlı sınırlarla harita; 9 ülkede petek düzeninde başkentler, 2–8 ülkede (çevrimiçi) ülke sayısına
-  göre küçülen kıta ve eşit alanlı bölgelere yerleşen başkentler; eşit şehir dağılımı
+- `js/mapgen.js` — Voronoi + kıvrımlı sınırlarla harita; 5 harita tipi (kıta, pangea, takımadalar, iç deniz, ikiz kıtalar).
+  Klasik kıta 9 ülkede petek düzeninde başkentlerle eskisiyle birebir aynıdır; diğer durumlarda harita ülke sayısına göre boyutlanır,
+  başkentler eşit alanlı bölgelere yerleşir; eşit şehir dağılımı. Aynı tohum + tip + ülke sayısı her cihazda aynı haritayı verir.
 - `js/net.js` — çevrimiçi oyun: oda kur / katıl (PeerJS), komutların host'a iletilmesi, durum eşitleme
 - `js/game.js` — oyun kuralları, kayıt/yükleme. DOM kullanmaz; tüm eylemler `cmd*` komutlarıyla gelir
 - `js/bot.js` — bot yapay zekâsı (oyuncuyla aynı komutları kullanır)

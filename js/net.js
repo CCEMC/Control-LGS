@@ -5,7 +5,7 @@
 (function () {
   'use strict';
   const G = window.G;
-  const BUILD = 'clgs-v12'; // host ve istemci aynı sürümü çalıştırmalı (harita aynı tohumdan aynı üretilsin)
+  const BUILD = 'clgs-v13'; // host ve istemci aynı sürümü çalıştırmalı (harita aynı tohumdan aynı üretilsin)
   const PROTO = 1;
   const PREFIX = 'control-lgs-';
   const ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -58,9 +58,10 @@
 
   // ======================= HOST =======================
   class Host {
-    constructor(me, cb) {
+    constructor(me, cb, opts) {
       this.role = 'host';
       this.cb = cb || {};
+      this.mapType = (opts && opts.mapType) || 'kita'; // 'rastgele' oyun başlarken seçilir
       this.players = [{ key: 'host', name: cleanName(me.name), ideology: me.ideology, host: true, conn: null, connected: true, cid: null, queue: [] }];
       this.started = false;
       this.closed = false;
@@ -147,8 +148,10 @@
       }
     }
     lobbyState() {
-      return { code: this.code, players: this.players.map((x) => ({ name: x.name, ideology: x.ideology, host: x.host })) };
+      return { code: this.code, mapType: this.mapType, players: this.players.map((x) => ({ name: x.name, ideology: x.ideology, host: x.host })) };
     }
+    // oda sahibi lobide harita tipini değiştirebilir
+    setMap(t) { if (this.started) return; this.mapType = t; this.lobbyChanged(); }
     lobbyChanged() {
       const st = this.lobbyState();
       for (const p of this.players) if (!p.host) this.send(p, { t: 'lobby', ...st, you: p.name });
@@ -165,7 +168,9 @@
       this.seed = Math.floor(Math.random() * 1e9);
       this.humans = this.players.map((p) => ({ name: p.name, ideology: p.ideology }));
       this.humanIds = ids;
-      const game = new G.Game({ seed: this.seed, nCountries: n, humans: this.humans, humanIds: ids, localIndex: 0, mp: 'host' });
+      const keys = G.MapGen.TYPES.map((t) => t.key);
+      if (!keys.includes(this.mapType)) this.mapType = keys[Math.floor(Math.random() * keys.length)]; // rastgele
+      const game = new G.Game({ seed: this.seed, nCountries: n, humans: this.humans, humanIds: ids, localIndex: 0, mp: 'host', mapType: this.mapType });
       this.game = game;
       this.started = true;
       this.startedAt = performance.now();
@@ -175,7 +180,7 @@
       return game;
     }
     startMsg(p) {
-      return { t: 'start', seed: this.seed, n: this.humans.length, humans: this.humans, humanIds: this.humanIds,
+      return { t: 'start', seed: this.seed, n: this.humans.length, humans: this.humans, humanIds: this.humanIds, mapType: this.game.mapType,
         index: this.players.indexOf(p), code: this.code, snap: this.game.snapshot() };
     }
     queueEvent(ev) {
@@ -290,7 +295,7 @@
       if (this.game) { // yeniden bağlanma: aynı oyuna devam
         this.game.applySnapshot(msg.snap); this.snapTime = msg.snap.time; return;
       }
-      const game = new G.Game({ seed: msg.seed, nCountries: msg.n, humans: msg.humans, humanIds: msg.humanIds, localIndex: msg.index, mp: 'client' });
+      const game = new G.Game({ seed: msg.seed, nCountries: msg.n, humans: msg.humans, humanIds: msg.humanIds, localIndex: msg.index, mp: 'client', mapType: msg.mapType });
       if (game.cities.length !== msg.snap.nCities) { this.lost('Harita bu cihazda farklı oluştu (sürüm uyuşmazlığı). Sayfayı yenileyip tekrar katıl.'); return; }
       this.game = game;
       game.applySnapshot(msg.snap);
@@ -338,7 +343,7 @@
 
   G.Net = {
     BUILD, MAX_PLAYERS, cleanCode,
-    host: (me, cb) => new Host(me, cb).open(),
+    host: (me, cb, opts) => new Host(me, cb, opts).open(),
     join: (code, me, cb) => new Client(me, cb).join(code),
   };
 })();

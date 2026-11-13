@@ -63,14 +63,44 @@
   }
 
   // ---------- başlangıç ekranı ----------
-  const startState = { mode: isTouch ? 'mobile' : 'pc', ideology: null };
+  const startState = { mode: isTouch ? 'mobile' : 'pc', ideology: null, mapType: 'kita' };
+  // harita tipleri (+ rastgele) ve seçim kartlarındaki küçük önizlemeler
+  const MAPS = G.MapGen.TYPES.concat([{ key: 'rastgele', name: 'Rastgele', desc: 'Her oyunda başka bir harita' }]);
+  const mapName = (k) => (MAPS.find((t) => t.key === k) || MAPS[0]).name;
+  const resolveMap = (k) => { const keys = G.MapGen.TYPES.map((t) => t.key); return keys.includes(k) ? k : keys[Math.floor(Math.random() * keys.length)]; };
+  function drawMapPreview(cv, type) {
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const W = cv.clientWidth || 150, H = cv.clientHeight || 90;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    const ctx = cv.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#a9bcae'; ctx.fillRect(0, 0, W, H);
+    if (type === 'rastgele') {
+      ctx.fillStyle = 'rgba(58,40,20,.55)'; ctx.font = `bold ${H * 0.62}px Georgia, serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('?', W / 2, H / 2 + 2);
+      return;
+    }
+    const m = G.MapGen.generate(4242, 6, type);
+    const s = Math.min(W / m.W, H / m.H) * 1.08, ox = (W - m.W * s) / 2, oy = (H - m.H * s) / 2;
+    ctx.lineJoin = 'round';
+    for (const c of m.cities) {
+      ctx.beginPath();
+      c.outline.forEach((p, i) => (i ? ctx.lineTo(ox + p[0] * s, oy + p[1] * s) : ctx.moveTo(ox + p[0] * s, oy + p[1] * s)));
+      ctx.closePath();
+      const pal = G.PALETTE[m.owner[c.id]];
+      ctx.fillStyle = G.U.hsl(pal.h, pal.s, pal.l); ctx.fill();
+      ctx.strokeStyle = 'rgba(40,25,10,.35)'; ctx.lineWidth = 0.5; ctx.stroke();
+    }
+    ctx.fillStyle = '#fff3c4';
+    for (const id of m.capitals) { const c = m.cities[id]; ctx.beginPath(); ctx.arc(ox + c.x * s, oy + c.y * s, 1.8, 0, Math.PI * 2); ctx.fill(); }
+  }
   function initStart() {
     const save = readSave();
     if (save) {
       const g = save.game, p = g.countries[g.playerId];
       const cities = g.cities.filter((c) => c[0] === g.playerId).length;
       $('resumeBox').classList.remove('hidden');
-      $('resumeInfo').textContent = `${p.name} · ${G.IDEO[p.ideology].name} · ${G.U.fmtTime(g.time)} · ${cities} şehir · ${save.mode === 'mobile' ? 'Mobil' : 'Bilgisayar'}`;
+      $('resumeInfo').textContent = `${p.name} · ${G.IDEO[p.ideology].name} · ${mapName(g.mapType || 'kita')} · ${G.U.fmtTime(g.time)} · ${cities} şehir · ${save.mode === 'mobile' ? 'Mobil' : 'Bilgisayar'}`;
       $('resumeBtn').addEventListener('click', () => start(save));
     }
     const ideoBox = $('ideoCards');
@@ -87,6 +117,23 @@
       ideoBox.querySelectorAll('.ideo').forEach((x) => x.classList.toggle('on', x === b));
       validate();
     });
+    // harita seçimi
+    try { const mt = localStorage.getItem('hc_map'); if (MAPS.some((t) => t.key === mt)) startState.mapType = mt; } catch (e) { /* yok */ }
+    const mapBox = $('mapCards');
+    mapBox.innerHTML = MAPS.map((t) => `<button class="mapc" data-t="${t.key}" title="${t.desc}"><canvas></canvas><b>${t.name}</b><small>${t.desc}</small></button>`).join('');
+    const syncMap = () => mapBox.querySelectorAll('.mapc').forEach((b) => b.classList.toggle('on', b.dataset.t === startState.mapType));
+    syncMap();
+    mapBox.addEventListener('click', (e) => {
+      const b = e.target.closest('.mapc'); if (!b || b.disabled) return;
+      startState.mapType = b.dataset.t; syncMap();
+      try { localStorage.setItem('hc_map', startState.mapType); } catch (err) { /* yok */ }
+      if (session && session.role === 'host') session.setMap(startState.mapType);
+    });
+    // önizlemeler sırayla çizilir (giriş ekranı beklemesin)
+    const cvs = [...mapBox.querySelectorAll('.mapc')];
+    let pi = 0;
+    const nextPreview = () => { if (pi >= cvs.length) return; const b = cvs[pi++]; drawMapPreview(b.querySelector('canvas'), b.dataset.t); setTimeout(nextPreview, 30); };
+    setTimeout(nextPreview, 60);
     const modeBox = $('modeBtns');
     const syncMode = () => modeBox.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x.dataset.m === startState.mode));
     modeBox.addEventListener('click', (e) => {
@@ -136,6 +183,8 @@
   function lockStart(on) {
     $('nameIn').disabled = on;
     document.querySelectorAll('#ideoCards .ideo').forEach((b) => { b.disabled = on; });
+    // haritayı odada yalnızca oda sahibi seçer
+    document.querySelectorAll('#mapCards .mapc').forEach((b) => { b.disabled = on && lobbyRole === 'client'; });
     validate();
   }
   function onlineMsg(text, bad) { const h = $('onlineHint'); h.textContent = text; h.classList.toggle('bad', !!bad); }
@@ -151,7 +200,7 @@
     onlineBusy = true; lobbyRole = 'host'; lockStart(true); onlineMsg('Oda kuruluyor…');
     saveName();
     try {
-      session = await G.Net.host(meInfo(), { onLobby: renderLobby });
+      session = await G.Net.host(meInfo(), { onLobby: renderLobby }, { mapType: startState.mapType });
       onlineBusy = false; validate();
     } catch (e) { resetOnline(e.message); }
   }
@@ -180,6 +229,7 @@
         const d = G.IDEO[p.ideology] || G.IDEO.demokrasi;
         return `<li><span class="lb-seal">${esc(d.name[0])}</span><b>${esc(p.name)}</b><small>${esc(d.name)}</small>${p.host ? '<i>oda sahibi</i>' : ''}</li>`;
       }).join('')}</ul>
+      <p class="lb-map">🗺 Harita: <b>${esc(mapName(st.mapType))}</b>${isHost ? ' <small>(yukarıdan değiştirebilirsin)</small>' : ''}</p>
       <p class="lb-note">${isHost ? (n < 2 ? 'Arkadaşların bu kodla ya da davet bağlantısıyla katılabilir. En az 2 oyuncu gerekli.'
         : `${n} oyuncu hazır · harita ${n} ülkeyle oluşturulacak (en fazla ${G.Net.MAX_PLAYERS}).`) : 'Oda sahibinin oyunu başlatması bekleniyor…'}</p>
       <div class="lb-btns">${isHost ? `<button class="btn big green" data-lb="start" ${n < 2 ? 'disabled' : ''}>Oyunu Başlat</button>` : ''}
@@ -220,7 +270,7 @@
     } else {
       const name = $('nameIn').value.trim().slice(0, 22);
       try { localStorage.setItem('hc_name', name); } catch (e) { /* yok */ }
-      game = new G.Game({ playerName: name, ideology: startState.ideology });
+      game = new G.Game({ playerName: name, ideology: startState.ideology, mapType: resolveMap(startState.mapType) });
     }
     launch(game, { mode, resumed: !!save });
   }

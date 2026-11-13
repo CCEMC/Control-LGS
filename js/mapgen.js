@@ -126,38 +126,162 @@
   // nCountries: ülke sayısı (tek oyunculu 9; çevrimiçide oyuncu sayısı kadar, 2–9).
   // 9 ülkede harita eskisiyle birebir aynıdır (kayıtlar tohumdan yeniden üretilir). Daha az ülkede kıta
   // ülke başına aynı alan kalacak şekilde küçülür, başkentler eşit alanlı bölgelerin merkezine yerleşir.
-  function generate(seed, nCountries) {
+  // Harita tipleri. 'kita' klasik haritadır (9 ülkede eskisiyle birebir aynı, kayıtlar bozulmaz).
+  const TYPES = [
+    { key: 'kita', name: 'Kıta', desc: 'Körfezli, yarımadalı klasik kıta' },
+    { key: 'pangea', name: 'Pangea', desc: 'Tek parça yuvarlak dev kıta; her yönden cephe' },
+    { key: 'adalar', name: 'Takımadalar', desc: 'Dar kara köprüleriyle bağlı adalar; boğazlar kritik' },
+    { key: 'icdeniz', name: 'İç Deniz', desc: 'Ortadaki denizi çevreleyen halka kıta' },
+    { key: 'ikiz', name: 'İkiz Kıtalar', desc: 'Tek bir kara köprüsüyle bağlı iki kıta' },
+  ];
+  const TYPE_SCALE = { kita: 1, pangea: 1.04, adalar: 1.28, icdeniz: 1.16, ikiz: 1.12 };
+
+  function segDist(p, a, b) {
+    const vx = b[0] - a[0], vy = b[1] - a[1];
+    let t = ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / (vx * vx + vy * vy);
+    t = Math.max(0, Math.min(1, t));
+    return [Math.hypot(p[0] - (a[0] + vx * t), p[1] - (a[1] + vy * t)), t];
+  }
+
+  // Kıta dışındaki tiplerin kara şekli: (x, y) noktası kara mı?
+  function makeShape(type, o) {
+    const { W, H, ax, by, edge, fq, rnd, nz, N } = o;
+    const inMap = (x, y) => !(x < edge || y < edge || x > W - edge || y > H - edge);
+    const big = (x, y, k) => nz.fbm(x * fq + 3.1 + k, y * fq + 7.7 - k, 4) - 0.5;
+    const small = (x, y, k) => nz.noise(x * 0.01 + k, y * 0.01 - k) - 0.5;
+    if (type === 'pangea') {
+      return (x, y) => {
+        if (!inMap(x, y)) return false;
+        const nx = (x - W / 2) / ax, ny = (y - H / 2) / by;
+        return Math.hypot(nx, ny) + big(x, y, 0) * 0.5 < 1;
+      };
+    }
+    if (type === 'icdeniz') {
+      const inner = 0.43;
+      return (x, y) => {
+        if (!inMap(x, y)) return false;
+        const nx = (x - W / 2) / ax, ny = (y - H / 2) / by;
+        const d = Math.pow(Math.pow(Math.abs(nx), 2.5) + Math.pow(Math.abs(ny), 2.5), 1 / 2.5);
+        return d + big(x, y, 0) * 0.42 < 1 && d + big(x, y, 5) * 0.32 > inner;
+      };
+    }
+    if (type === 'ikiz') {
+      const jy = (rnd() - 0.5) * 0.18 * H;
+      // iki kıta arasında en az ~3 şehir genişliğinde açık deniz kalır, yalnızca köprü bağlar
+      const gap = Math.max(0.12 * W, 380);
+      const half = (W / 2 - gap / 2 - edge) / 2;
+      const A = [edge + half, H / 2 + jy], B = [W - edge - half, H / 2 - jy];
+      const rx = half / 1.22, ry = H * 0.39;
+      return (x, y) => {
+        if (!inMap(x, y)) return false;
+        for (const c of [A, B]) {
+          const nx = (x - c[0]) / rx, ny = (y - c[1]) / ry;
+          const d = Math.pow(Math.pow(Math.abs(nx), 2.4) + Math.pow(Math.abs(ny), 2.4), 1 / 2.4);
+          if (d + big(x, y, c[0] * 0.001) * 0.4 < 1) return true;
+        }
+        return segDist([x, y], A, B)[0] < 130 + small(x, y, 2) * 50; // kara köprüsü (≈2 şehir genişliğinde)
+      };
+    }
+    // takımadalar: ızgaraya serpiştirilmiş adalar + en kısa yollarla kara köprüleri (ağaç + bir halka)
+    const K = Math.max(3, Math.min(9, N)); // yaklaşık ülke başına bir ada: ülkeler dengeli olur
+    const cols = Math.max(2, Math.round(Math.sqrt((K + 1) * (W / H)))), rows = Math.ceil((K + 1) / cols); // en az bir boş hücre: açık deniz
+    const cw = (W - 2 * edge) / cols, ch = (H - 2 * edge) / rows;
+    const cells = [];
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) cells.push([c, r]);
+    for (let i = cells.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [cells[i], cells[j]] = [cells[j], cells[i]]; }
+    // adalar arasında en az ~2 şehir genişliğinde deniz kalır (gürültüyle taşma payı 1.17)
+    const gapHalf = Math.max(0.08 * Math.min(cw, ch), 170);
+    const isl = cells.slice(0, K).map(([c, r]) => ({
+      x: edge + (c + 0.5) * cw, y: edge + (r + 0.5) * ch,
+      rx: Math.max(120, (cw / 2 - gapHalf) / 1.17) * (0.92 + rnd() * 0.08), ry: Math.max(120, (ch / 2 - gapHalf) / 1.17) * (0.92 + rnd() * 0.08),
+    }));
+    const dist = (a, b) => Math.hypot(isl[a].x - isl[b].x, isl[a].y - isl[b].y);
+    const inT = [0], bridges = [];
+    while (inT.length < K) {
+      let bi = -1, bj = -1, bd = Infinity;
+      for (const i of inT) for (let j = 0; j < K; j++) if (!inT.includes(j) && dist(i, j) < bd) { bd = dist(i, j); bi = i; bj = j; }
+      bridges.push([bi, bj]); inT.push(bj);
+    }
+    if (K >= 4) { // ek bir köprü: tek yollu bir ağaç yerine bir döngü olsun
+      let bi = -1, bj = -1, bd = Infinity;
+      for (let i = 0; i < K; i++) for (let j = i + 1; j < K; j++) {
+        if (bridges.some(([a, b]) => (a === i && b === j) || (a === j && b === i))) continue;
+        if (dist(i, j) < bd) { bd = dist(i, j); bi = i; bj = j; }
+      }
+      if (bi >= 0) bridges.push([bi, bj]);
+    }
+    return (x, y) => {
+      if (!inMap(x, y)) return false;
+      for (const s of isl) { const nx = (x - s.x) / s.rx, ny = (y - s.y) / s.ry; if (Math.hypot(nx, ny) + big(x, y, s.x * 0.001) * 0.34 < 1) return true; }
+      for (const [i, j] of bridges) if (segDist([x, y], [isl[i].x, isl[i].y], [isl[j].x, isl[j].y])[0] < 110 + small(x, y, i + j) * 40) return true;
+      return false;
+    };
+  }
+
+  // Kıta dışı tiplerde ülke başına ~19 şehir hedeflenir: önce bir deneme üretilir, şehir sayısı hedeften
+  // saparsa harita alanı orantılı büyütülüp/küçültülüp yeniden üretilir (aynı tohumla, belirleyici).
+  function generate(seed, nCountries, mapType) {
     const N = nCountries >= 2 && nCountries <= 9 ? nCountries : 9;
+    const type = TYPES.some((t) => t.key === mapType) ? mapType : 'kita';
+    if (type === 'kita') return build(seed, N, type, 1);
+    // ülkeler dengesiz çıkarsa (ör. küçük bir adada sıkışan ülke) aynı tohumun başka bir çeşidi denenir
+    const score = (m) => {
+      const cnt = new Array(N).fill(0);
+      for (const o of m.owner) cnt[o]++;
+      return (Math.max(...cnt) - Math.min(...cnt)) + Math.abs(m.cities.length / N - 19) * 0.5;
+    };
+    let best = null, bs = Infinity;
+    for (let v = 0; v < 3; v++) {
+      const m = fitSize(v === 0 ? seed : (seed + v * 7919) >>> 0, N, type);
+      const s = score(m);
+      if (s < bs) { best = m; bs = s; }
+      if (s <= 5) break;
+    }
+    return best;
+  }
+
+  function fitSize(seed, N, type) {
+    let mul = 1, m = build(seed, N, type, mul), best = m;
+    const err = (x) => Math.abs(x.cities.length / N - 19);
+    for (let i = 0; i < 4; i++) {
+      const per = m.cities.length / N;
+      if (per >= 16.5 && per <= 22.5) return m;
+      mul = Math.max(0.5, Math.min(2.2, mul * Math.pow(19 / Math.max(1, per), 0.5)));
+      m = build(seed, N, type, mul);
+      if (err(m) < err(best)) best = m;
+    }
+    return err(m) <= err(best) ? m : best;
+  }
+
+  function build(seed, N, type, mul) {
     const rnd = mulberry32(seed);
     const nz = makeNoise(seed * 7 + 13);
-    const sc = N === 9 ? 1 : Math.sqrt(N / 9);
+    const sc = N === 9 && type === 'kita' ? 1 : Math.sqrt(N / 9) * TYPE_SCALE[type] * mul;
     const W = Math.round(3400 * sc), H = Math.round(2400 * sc);
     const mX = 300 * sc, mY = 300 * sc;
     const ax = W / 2 - mX, by = H / 2 - mY;
-
-    // Yarımada ve körfez (fotoğraftaki gibi düzensiz kıyı)
-    const penAng = rnd() * Math.PI * 2;
-    const bayAng = penAng + Math.PI * (0.6 + rnd() * 0.8);
-    const edgePt = (ang, k) => [W / 2 + Math.cos(ang) * ax * k, H / 2 + Math.sin(ang) * by * k];
-    const penA = edgePt(penAng, 0.9), penB = edgePt(penAng, 1.22);
-    const bayA = edgePt(bayAng, 1.15), bayB = edgePt(bayAng, 0.72);
-    function segDist(p, a, b) {
-      const vx = b[0] - a[0], vy = b[1] - a[1];
-      let t = ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / (vx * vx + vy * vy);
-      t = Math.max(0, Math.min(1, t));
-      return [Math.hypot(p[0] - (a[0] + vx * t), p[1] - (a[1] + vy * t)), t];
-    }
     const edge = 140 * sc, fq = 0.0013 / sc;
-    function isLand(x, y) {
-      if (x < edge || y < edge || x > W - edge || y > H - edge) return false;
-      const nx = (x - W / 2) / ax, ny = (y - H / 2) / by;
-      let d = Math.pow(Math.pow(Math.abs(nx), 3) + Math.pow(Math.abs(ny), 3), 1 / 3);
-      d += (nz.fbm(x * fq + 3.1, y * fq + 7.7, 4) - 0.5) * 0.62;
-      const [bd] = segDist([x, y], bayA, bayB);
-      if (bd < 150 * sc + (nz.noise(x * 0.01, y * 0.01) - 0.5) * 60 * sc) return false;
-      if (d < 1) return true;
-      const [pd, pt] = segDist([x, y], penA, penB);
-      return pd < 170 * sc * (1 - pt * 0.45) + (nz.noise(x * 0.01 + 4, y * 0.01) - 0.5) * 60 * sc;
+    let isLand;
+    if (type === 'kita') {
+      // Yarımada ve körfez (fotoğraftaki gibi düzensiz kıyı)
+      const penAng = rnd() * Math.PI * 2;
+      const bayAng = penAng + Math.PI * (0.6 + rnd() * 0.8);
+      const edgePt = (ang, k) => [W / 2 + Math.cos(ang) * ax * k, H / 2 + Math.sin(ang) * by * k];
+      const penA = edgePt(penAng, 0.9), penB = edgePt(penAng, 1.22);
+      const bayA = edgePt(bayAng, 1.15), bayB = edgePt(bayAng, 0.72);
+      isLand = (x, y) => {
+        if (x < edge || y < edge || x > W - edge || y > H - edge) return false;
+        const nx = (x - W / 2) / ax, ny = (y - H / 2) / by;
+        let d = Math.pow(Math.pow(Math.abs(nx), 3) + Math.pow(Math.abs(ny), 3), 1 / 3);
+        d += (nz.fbm(x * fq + 3.1, y * fq + 7.7, 4) - 0.5) * 0.62;
+        const [bd] = segDist([x, y], bayA, bayB);
+        if (bd < 150 * sc + (nz.noise(x * 0.01, y * 0.01) - 0.5) * 60 * sc) return false;
+        if (d < 1) return true;
+        const [pd, pt] = segDist([x, y], penA, penB);
+        return pd < 170 * sc * (1 - pt * 0.45) + (nz.noise(x * 0.01 + 4, y * 0.01) - 0.5) * 60 * sc;
+      };
+    } else {
+      isLand = makeShape(type, { W, H, ax, by, edge, fq, rnd, nz, N });
     }
 
     const pts = poisson(W, H, 128, rnd);
@@ -166,15 +290,17 @@
     const land = pts.map((p) => isLand(p[0], p[1]));
     const nbrs = vc.map((c) => [...new Set(c.tags.filter((t) => t >= 0))]);
 
-    // Göl doldur: kenara ulaşamayan deniz hücreleri kara olur
-    const reach = new Uint8Array(n);
-    const q = [];
-    for (let i = 0; i < n; i++) if (!land[i] && vc[i].tags.includes(-1)) { reach[i] = 1; q.push(i); }
-    while (q.length) {
-      const i = q.pop();
-      for (const j of nbrs[i]) if (!land[j] && !reach[j]) { reach[j] = 1; q.push(j); }
+    // Göl doldur: kenara ulaşamayan deniz hücreleri kara olur (iç denizli haritada deniz korunur)
+    if (type !== 'icdeniz') {
+      const reach = new Uint8Array(n);
+      const q = [];
+      for (let i = 0; i < n; i++) if (!land[i] && vc[i].tags.includes(-1)) { reach[i] = 1; q.push(i); }
+      while (q.length) {
+        const i = q.pop();
+        for (const j of nbrs[i]) if (!land[j] && !reach[j]) { reach[j] = 1; q.push(j); }
+      }
+      for (let i = 0; i < n; i++) if (!land[i] && !reach[i]) land[i] = true;
     }
-    for (let i = 0; i < n; i++) if (!land[i] && !reach[i]) land[i] = true;
     // En büyük kara parçasını tut
     const comp = new Int32Array(n).fill(-1);
     let best = -1, bestSize = 0;
@@ -252,7 +378,7 @@
       cities.push({ id: ci, name, x: cx, y: cy, site: pts[i], outline, bbox: [minx, miny, maxx, maxy], neighbors: [...new Set(neighbors)], coastal, area: Math.abs(area) });
     }
 
-    const capitals = N === 9 ? hexCapitals(cities, rnd) : spreadCapitals(cities, N, rnd);
+    const capitals = N === 9 && type === 'kita' ? hexCapitals(cities, rnd) : spreadCapitals(cities, N, rnd);
     const owner = new Int32Array(cities.length).fill(-1);
     const counts = new Array(N).fill(0);
     capitals.forEach((cid, k) => { owner[cid] = k; counts[k] = 1; });
@@ -336,7 +462,7 @@
       if (!moved) break;
     }
 
-    return { W, H, seed, nCountries: N, cities, edges, owner: Array.from(owner), capitals, countryNames: COUNTRY_NAMES.slice() };
+    return { W, H, seed, nCountries: N, mapType: type, cities, edges, owner: Array.from(owner), capitals, countryNames: COUNTRY_NAMES.slice() };
   }
 
   // N ≠ 9: başkentler k-ortalamalar ile (alan ağırlıklı) eşit büyüklükte bölgelerin merkezine yerleşir
@@ -430,5 +556,5 @@
     return capitals;
   }
 
-  G.MapGen = { generate };
+  G.MapGen = { generate, TYPES };
 })();

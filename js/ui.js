@@ -16,6 +16,27 @@
     { key: 'airDef', name: 'Hava Koruma', desc: 'Uçak çıkarmasını engeller, füzeleri %15 düşürür.', target: 'own' },
   ];
 
+  // Menü simgeleri: kenar çubuğu simgeleriyle aynı çizgi tarzı (24×24, dolgusuz)
+  const IC = {
+    helmet: '<path d="M4 15a8 8 0 0 1 16 0v2H4z"/><path d="M12 7v4M2.5 17.5h19M8 17.5v2.5M16 17.5v2.5"/>',
+    sword: '<path d="M14.5 3.5L20.5 3.5 20.5 9.5 9.5 20.5 3.5 14.5z"/><path d="M7 11l6 6M4.5 19.5l2-2"/>',
+    shield: '<path d="M12 3l8 3v6c0 4.5-3.4 7.8-8 9-4.6-1.2-8-4.5-8-9V6z"/><path d="M12 7v10M8.5 11h7"/>',
+    factory: '<path d="M3 20V11l5 3v-3l5 3V7h4v13z"/><path d="M17 7V3h3v17M2 20h20M7 17h2M12 17h2"/>',
+    chart: '<path d="M4 20V4M4 20h16"/><path d="M7 15l4-4 3 3 5-6"/><path d="M15 8h4v4"/>',
+    bolt: '<path d="M13 2L5 13.5h6L10 22l8-11.5h-6z"/>',
+    plane: '<path d="M3 13.5l7.5-2.3L16.6 4.6c1-1 2.6-1.2 3.1-.6.6.6.4 2.1-.6 3.1l-6.5 6.2-2.3 7.5-2 1-.8-6.4-6.4-.8z"/>',
+    rocket: '<path d="M12 2.5c3 2.2 4.2 5.8 4 10L12 16.5 8 12.5c-.2-4.2 1-7.8 4-10z"/><circle cx="12" cy="9" r="1.7"/><path d="M8.3 11.5L5 15l3.2.8M15.7 11.5L19 15l-3.2.8M10.5 18.5L12 22l1.5-3.5"/>',
+    fire: '<path d="M12 22c4 0 7-2.9 7-6.8 0-4.6-4.3-6.6-4.6-11.7-2.7 1.6-4 4.4-3.9 6.8-1.1-.8-1.9-2-2.1-3.6C6.4 9 5 11.8 5 15.2 5 19.1 8 22 12 22z"/><path d="M12 22c-1.7 0-3-1.2-3-2.9 0-2 2-3 3-5.1 1 2.1 3 3.1 3 5.1 0 1.7-1.3 2.9-3 2.9z"/>',
+    castle: '<path d="M4 21V9h2.5V6h3v3h5V6h3v3H20v12z"/><path d="M10 21v-5h4v5M4 9V5.5h2.5M17.5 5.5H20V9"/>',
+    radar: '<path d="M3 20.5h18"/><path d="M6 20.5a6 6 0 0 1 12 0"/><path d="M12 14.5L18.5 5"/><path d="M14.5 3.6a9 9 0 0 1 5.6 5"/><path d="M14.2 6.6a5.5 5.5 0 0 1 3 2.8"/>',
+    coin: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="6.3" opacity=".5"/><path d="M14.3 9.6c-.5-.9-1.4-1.4-2.4-1.4-1.6 0-2.6.9-2.6 2 0 2.6 5.3 1.3 5.3 3.9 0 1.1-1.1 2-2.7 2-1.1 0-2.1-.6-2.6-1.5M12 6.8v1.4M12 15.9v1.4"/>',
+    flag: '<path d="M5 21.5V3.5M5 4h12l-2.5 4.5L17 13H5"/>',
+    target: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.2"/><path d="M12 1.5v4.5M12 18v4.5M1.5 12H6M18 12h4.5"/>',
+    warn: '<path d="M12 3L22 20H2z"/><path d="M12 10v4.5M12 17.2v.3"/>',
+  };
+  const icon = (k, cls) => `<svg class="ic ${cls || ''}" viewBox="0 0 24 24" aria-hidden="true">${IC[k] || ''}</svg>`;
+  const SHOP_ICON = { factory: 'factory', factoryLimit: 'chart', blitz: 'bolt', plane: 'plane', missile: 'rocket', rebellion: 'fire', cityDef: 'castle', airDef: 'radar' };
+
   const ICONS = {
     diplomacy: '<svg viewBox="0 0 24 24"><path d="M6 3h10l3 3v12a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3z"/><path d="M7 8h9M7 12h9M7 16h5"/></svg>',
     military: '<svg viewBox="0 0 24 24"><path d="M4 3l11 11M20 3L9 14"/><path d="M12.5 16.5l3-3M11.5 16.5l-3-3"/><path d="M15 17l3 3M9 17l-3 3"/></svg>',
@@ -393,6 +414,8 @@
     // değeri değişince küçük bir "zıplama" animasyonu yapan canlı değer
     LP(fn) { this.liveBuf.push(fn); return `<span class="lpop" data-l="${this.liveBuf.length - 1}"></span>`; }
     LW(fn) { this.liveBuf.push(fn); return `<i data-lw="${this.liveBuf.length - 1}"></i>`; }
+    // canlı CSS değişkeni (--v): halka göstergeler için; bir öğenin özniteliği olarak yazılır
+    LV(fn) { this.liveBuf.push(fn); return `data-lv="${this.liveBuf.length - 1}"`; }
 
     renderPanel() {
       if (!this.menu) return;
@@ -434,6 +457,7 @@
         if (prev !== undefined && prev !== v) { el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
       });
       body.querySelectorAll('[data-lw]').forEach((el) => { const f = this.live[+el.dataset.lw]; if (f) el.style.width = f() + '%'; });
+      body.querySelectorAll('[data-lv]').forEach((el) => { const f = this.live[+el.dataset.lv]; if (f) el.style.setProperty('--v', String(f())); });
     }
 
     relStatus(a, b) {
@@ -550,58 +574,81 @@
       return `<div class="diplo"><ul class="clist scroll">${list}</ul><div class="cwrap scroll">${info}</div></div>`;
     }
 
+    // ---------- askeri yönetim (v3) ----------
     htmlMilitary() {
       const g = this.game, me = g.playerId, P = g.player;
       const tp = g.price(me, 'troop'), up = g.price(me, 'upgrade');
       const armies = g.armies.filter((a) => a.owner === me);
       const cut = g.cutOffCities(me);
-      const warn = cut.length ? `<div class="warnbox"><span class="wi">!</span>
+      const warn = cut.length ? `<div class="warnbox">${icon('warn', 'wi2')}
         <div><b>${cut.length === 1 ? esc(cut[0].name) : cut.length + ' şehir'} fabrikaya bağlı değil</b>
         <small>Buradaki askerler %50 zayıf ve yavaş. Fabrika kur ya da fabrikalı topraklarınla birleştir.</small></div>
         <button class="btn sm" data-act="cutfocus">Göster</button></div>` : '';
-      const upRow = (kind, label) => {
-        const lvl = kind === 'atk' ? P.atkLvl : P.defLvl;
-        const pips = Array.from({ length: 10 }, (_, i) => `<i class="${i < lvl ? 'on' : ''}"></i>`).join('');
-        return `<li><div class="up-h"><b>${label}</b><span>${lvl}/10 · +%${lvl * 5}</span></div><div class="pips">${pips}</div>
-          <button class="btn sm" data-act="up" data-kind="${kind}" ${lvl >= 10 || P.money < up ? 'disabled' : ''}>${lvl >= 10 ? 'Maksimum' : `+%5 · ${fmtMoney(up)}`}</button></li>`;
+      // üst bilgi: toplam asker, cephedekiler, zayıflar, güç çarpanları
+      const sumIf = (f) => () => { let s = 0; for (const u of g.units) if (!u.dead && u.owner === me && f(u)) s += u.troops; return s; };
+      const fronts = sumIf((u) => u.move && (u.move.kind === 'battle' || u.move.kind === 'attack'));
+      const weak = sumIf((u) => u.weak);
+      const defM = (1 + P.defLvl * G.CFG.upgradeStep) * g.ideo(me).def;
+      const hero = `<div class="mhero">
+          <div class="mh-main"><span class="mh-ic">${icon('helmet')}</span><div><small>Toplam asker</small><b>${this.L(() => fmtK(g.totalTroops(me)))}</b>
+            <span class="mh-sub">⚔ ${this.L(() => fmtK(fronts()))} cephede · <span class="wk">❗ ${this.L(() => fmtK(weak()))} zayıf</span></span></div></div>
+          <div class="mh-pow"><div class="atk">${icon('sword')}<span><small>Saldırı</small><b>${this.L(() => '×' + g.atkMult(me, -1).toFixed(2))}</b></span></div>
+            <div class="def">${icon('shield')}<span><small>Savunma</small><b>×${defM.toFixed(2)}</b></span></div></div></div>`;
+      // asker üretimi: halka gösterge + sıra düğmeleri + sınırlara dağıt
+      const tt = g.troopTime(me);
+      const prod = `<div class="mcard">
+          <div class="mc-h">${icon('factory')}<b>Asker üretimi</b><span class="mc-r">1k asker / ${+tt.toFixed(2)} sn · ${fmtMoney(tp)}</span></div>
+          <div class="pr-body">
+            <div class="ring" ${this.LV(() => (P.queue > 0 ? (P.prodTimer / g.troopTime(me)) * 100 : 0))}>
+              <div class="ring-in"><b class="target">${this.LP(() => '+' + fmtK(P.queue * 1000))}</b><small>sırada</small></div></div>
+            <div class="pr-ctl">
+              <div class="qbtns"><button class="btn round" data-act="q" data-dir="-1" ${P.queue <= 0 ? 'disabled' : ''} title="Sıradan 1k çıkar">−</button>
+                <button class="btn green" data-act="q" data-dir="1" data-n="1" ${P.money < tp ? 'disabled' : ''}>+1k</button>
+                <button class="btn green" data-act="q" data-dir="1" data-n="5" ${P.money < tp ? 'disabled' : ''}>+5k</button>
+                <button class="btn green" data-act="q" data-dir="1" data-n="10" ${P.money < tp ? 'disabled' : ''}>+10k</button></div>
+              <button class="tgl ${P.autoDist ? 'on' : ''}" data-act="autodist" role="switch" aria-checked="${!!P.autoDist}"
+                title="Açıkken üretilen askerler başkentte kalmaz; önce saldırı altındaki, sonra savaştığın ülkeye sınır olan, en az askeri olan şehre yürür.">
+                <span class="tgl-track"><i></i></span><span class="tgl-l">Sınırlara dağıt</span><span class="tgl-ar">»</span></button>
+              <small class="pr-note">${this.L(() => (P.queue > 0 ? `Sıra ${Math.max(0, Math.ceil(P.queue * g.troopTime(me) - P.prodTimer))} sn'de biter` : 'Üretim yok'))} ·
+                ${this.L(() => (P.autoDist ? 'yeni askerler sınırlara yürür' : 'yeni askerler başkentte doğar'))}</small>
+            </div></div></div>`;
+      // ekipman: saldırı ve savunma kartları
+      const eq = (kind, label, ic) => {
+        const lvl = kind === 'atk' ? P.atkLvl : P.defLvl, max = G.CFG.maxUpgrade;
+        const segs = Array.from({ length: max }, (_, i) => `<i class="${i < lvl ? 'on' : ''}"></i>`).join('');
+        return `<div class="eq ${kind}"><div class="eq-h">${icon(ic)}<b>${label}</b><span>Sv. ${lvl}/${max}</span></div>
+          <div class="eq-val">+%${Math.round(lvl * G.CFG.upgradeStep * 100)}</div><div class="segbar">${segs}</div>
+          <button class="btn sm ${kind === 'atk' ? 'red' : 'blue'}" data-act="up" data-kind="${kind}" ${lvl >= max || P.money < up ? 'disabled' : ''}>${lvl >= max ? 'En üst seviye' : `+%5 · ${fmtMoney(up)}`}</button></div>`;
       };
-      // ideolojiye özel geliştirmeler (her biri 3 seviye; açıklama seviye başına etkiyi söyler)
-      const iuMax = G.CFG.ideoUpMax;
-      const iuRow = (x) => {
+      const equip = `<div class="mcard"><div class="mc-h">${icon('sword')}<b>Ekipman</b><span class="mc-r">her seviye +%5</span></div>
+        <div class="eq-grid">${eq('atk', 'Saldırı', 'sword')}${eq('def', 'Savunma', 'shield')}</div></div>`;
+      // ideolojiye özel geliştirmeler
+      const iuMax = G.CFG.ideoUpMax, ideo = g.ideo(me);
+      const iuCard = (x) => {
         const lvl = g.iu(me, x.key), pr = g.ideoUpPrice(me, x.key);
-        const pips = Array.from({ length: iuMax }, (_, i) => `<i class="${i < lvl ? 'on' : ''}"></i>`).join('');
-        return `<li><div class="up-h"><b>${esc(x.name)}</b><span>${esc(x.desc)} · ${lvl}/${iuMax}</span></div><div class="pips">${pips}</div>
-          <button class="btn sm" data-act="iup" data-key="${x.key}" data-name="${esc(x.name)}" ${lvl >= iuMax || P.money < pr ? 'disabled' : ''}>${lvl >= iuMax ? 'Tamam' : fmtMoney(pr)}</button></li>`;
+        const dots = Array.from({ length: iuMax }, (_, i) => `<i class="${i < lvl ? 'on' : ''}"></i>`).join('');
+        return `<div class="iu ${lvl >= iuMax ? 'max' : ''}"><div class="iu-h"><b>${esc(x.name)}</b><span class="dots">${dots}</span></div>
+          <p>${esc(x.desc)} <small>(seviye başına)</small></p>
+          <button class="btn sm" data-act="iup" data-key="${x.key}" data-name="${esc(x.name)}" ${lvl >= iuMax || P.money < pr ? 'disabled' : ''}>${lvl >= iuMax ? '✓ Tamamlandı' : `Seviye ${lvl + 1} · ${fmtMoney(pr)}`}</button></div>`;
       };
-      const ideoSect = g.ideoUps(me).length ? `<div class="sect"><h5>${esc(g.ideo(me).name)} geliştirmeleri <small>(seviye başına)</small></h5>
-          <ul class="equip ideo-up">${g.ideoUps(me).map(iuRow).join('')}</ul></div>` : '';
-      const armyList = armies.map((a) => `<li><div class="ar-h"><b>${esc(a.name)}</b> ${this.L(() => fmtK(g.units.filter((u) => u.army === a.id && !u.dead).reduce((s, u) => s + u.troops, 0)))}</div>
-          <div class="seg"><button class="btn sm ${a.mode === 'attack' ? 'red on' : ''}" data-act="amode" data-id="${a.id}" data-mode="attack">Taarruz</button>
-          <button class="btn sm ${a.mode === 'defend' ? 'blue on' : ''}" data-act="amode" data-id="${a.id}" data-mode="defend">Savunma</button>
-          <button class="btn sm" data-act="afocus" data-id="${a.id}" title="Haritada göster">◎</button>
-          <button class="btn sm" data-act="adisband" data-id="${a.id}" title="Ordunu dağıt">✕</button></div></li>`).join('');
+      const ideoSect = g.ideoUps(me).length ? `<div class="mcard"><div class="mc-h"><span class="ideo-mini">${esc(ideo.name[0])}</span><b>${esc(ideo.name)} geliştirmeleri</b>
+          <span class="mc-r">sadece ${esc(ideo.name)}</span></div><div class="iu-grid">${g.ideoUps(me).map(iuCard).join('')}</div></div>` : '';
+      // ordular
+      const armyCard = (a) => {
+        const us = () => g.units.filter((u) => u.army === a.id && !u.dead);
+        return `<div class="army ${a.mode}"><div class="ar-h">${icon('flag')}<b>${esc(a.name)}</b><span class="ar-t">${this.L(() => fmtK(us().reduce((s, u) => s + u.troops, 0)))}</span></div>
+          <small class="ar-s">${this.L(() => { const l = us(); const f = l.filter((u) => u.move && (u.move.kind === 'battle' || u.move.kind === 'attack')).length; const n = new Set(l.filter((u) => u.city !== null).map((u) => u.city)).size; return `${n} şehirde${f ? ` · ${f} çatışmada` : ''}`; })}</small>
+          <div class="ar-b"><div class="mode2"><button class="${a.mode === 'attack' ? 'on' : ''}" data-act="amode" data-id="${a.id}" data-mode="attack">⚔ Taarruz</button>
+            <button class="${a.mode === 'defend' ? 'on' : ''}" data-act="amode" data-id="${a.id}" data-mode="defend">🛡 Savunma</button></div>
+            <button class="btn sm" data-act="afocus" data-id="${a.id}" title="Haritada göster">◎</button>
+            <button class="btn sm" data-act="adisband" data-id="${a.id}" title="Ordunu dağıt">✕</button></div></div>`;
+      };
+      const armySect = `<div class="mcard"><div class="mc-h">${icon('flag')}<b>Ordular</b><button class="btn sm" data-act="mark">+ Ordu Kur</button></div>
+        ${armies.length ? `<div class="army-grid">${armies.map(armyCard).join('')}</div><small class="note">Ordunun bulunduğu şehre gönderdiğin askerler orduya katılır.</small>`
+          : '<div class="army-empty">Ordular kendi kendine savaşır: <b>Taarruz</b> ordusu düşman şehirlerini işgal eder, <b>Savunma</b> ordusu sınırlarını korur ve kaybedilen şehirleri geri alır. <b>+ Ordu Kur</b>\'a bas, birliklerini haritada işaretle.</div>'}</div>`;
       const tap = this.mode === 'pc' ? 'tıkla' : 'dokun';
-      return `<div class="mil scroll">
-        ${warn}
-        <div class="mtop">
-          <div class="mstat"><span>Toplam asker</span><b>${this.L(() => fmtK(g.totalTroops(me)))}</b></div>
-          <div class="mtarget"><span>Eklenecek asker</span>
-            <div class="target-row"><button class="btn round" data-act="q" data-dir="-1" ${P.queue <= 0 ? 'disabled' : ''}>−</button>
-              <b class="target">${this.LP(() => '+' + fmtK(P.queue * 1000))}</b>
-              <button class="btn round" data-act="q" data-dir="1" ${P.money < tp ? 'disabled' : ''}>+</button></div>
-            <button class="tgl ${P.autoDist ? 'on' : ''}" data-act="autodist" role="switch" aria-checked="${!!P.autoDist}"
-              title="Açıkken üretilen askerler başkentte kalmaz; önce saldırı altındaki, sonra savaştığın ülkeye sınır olan, en az askeri olan şehre yürür.">
-              <span class="tgl-track"><i></i></span><span class="tgl-l">Sınırlara dağıt</span><span class="tgl-ar">»</span></button></div>
-        </div>
-        <div class="prod"><div class="bar">${this.LW(() => (P.queue > 0 ? (P.prodTimer / g.troopTime(me)) * 100 : 0))}</div>
-          <small>${this.L(() => (P.queue > 0 ? `Üretimde: ${P.queue}k` : 'Üretim yok'))} · her +1k asker = ${fmtMoney(tp)} · ${this.L(() => (P.autoDist ? 'sınırlara yürür' : 'başkentte doğar'))}</small></div>
-        <div class="sect"><h5>Ekipman</h5><ul class="equip">${upRow('atk', 'Saldırı')}${upRow('def', 'Savunma')}</ul></div>
-        ${ideoSect}
-        <div class="sect"><div class="ar-top"><h5>Ordular</h5><button class="btn sm" data-act="mark">+ Ordu Kur</button></div>
-          <ul class="armies">${armyList || '<li class="empty">Ordun yok. Birlikleri işaretleyip ordu kurabilirsin.</li>'}</ul>
-          ${armyList ? '<small class="note">Ordunun bulunduğu şehre gönderdiğin askerler orduya katılır.</small>' : ''}</div>
-        <p class="note">Birliğe ${tap} → miktarı seç → hedef şehre ${tap}.${this.mode === 'pc' ? ' Q: iptal.' : ''}</p>
-      </div>`;
+      return `<div class="mil scroll">${warn}${hero}${prod}${equip}${ideoSect}${armySect}
+        <p class="note">Birliğe ${tap} → miktarı seç → hedef şehre ${tap}.${this.mode === 'pc' ? ' Q: iptal.' : ''}</p></div>`;
     }
 
     // ---------- ittifaklar (v3): güç sıralaması, ittifaklar, savaşlar ----------
@@ -646,30 +693,52 @@
         <h5>Savaşlar</h5><ul class="warlist">${wars || '<li class="empty">Kıtada barış var.</li>'}</ul></div>`;
     }
 
+    // ---------- mağaza (v3) ----------
     htmlShop() {
       const g = this.game, me = g.playerId, P = g.player;
       const GROUPS = [
-        { t: 'Ekonomi', keys: ['factory', 'factoryLimit'] },
-        { t: 'Savaş', keys: ['blitz', 'plane', 'missile', 'rebellion'] },
-        { t: 'Savunma', keys: ['cityDef', 'airDef'] },
+        { t: 'Ekonomi', ic: 'coin', cls: 'eco', keys: ['factory', 'factoryLimit'] },
+        { t: 'Savaş', ic: 'sword', cls: 'war', keys: ['blitz', 'plane', 'missile', 'rebellion'] },
+        { t: 'Savunma', ic: 'shield', cls: 'def', keys: ['cityDef', 'airDef'] },
       ];
-      const row = (it) => {
+      const count = (f) => { let n = 0; for (const c of g.cities) if (c.owner === me && f(c)) n++; return n; };
+      const card = (it, cls) => {
         const pr = g.price(me, it.key);
-        let extra = '', dis = P.money < pr, note = '';
-        if (it.key === 'factoryLimit') { note = `Sınır: ${g.factoryLimit(me)} · ${P.limitBuys}/3 alındı`; if (P.limitBuys >= 3) dis = true; }
-        if (it.key === 'factory') note = `Şehir başına en fazla ${g.factoryLimit(me)}`;
-        if (it.key === 'blitz' && P.blitzUntil > g.time) note = 'Aktif — alırsan süre uzar';
-        if (it.key === 'rebellion') {
-          const opts = g.countries.filter((c) => c.alive && !c.isRebel && c.id !== me && !g.isAlly(me, c.id)).map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
-          extra = `<select id="rebelSel">${opts}</select>`;
+        let extra = '', dis = P.money < pr, note = '', badge = '';
+        switch (it.key) {
+          case 'factory': { const pend = g.factoriesPending(me); note = `${g.factoriesOf(me)} fabrikan var${pend ? ` (+${pend} inşaatta)` : ''} · şehir başına en fazla ${g.factoryLimit(me)}`; break; }
+          case 'factoryLimit': note = `Şu an ${g.factoryLimit(me)} · ${P.limitBuys}/${G.CFG.maxLimitBuys} alındı`; if (P.limitBuys >= G.CFG.maxLimitBuys) { dis = true; badge = 'Tamamlandı'; } break;
+          case 'blitz': if (P.blitzUntil > g.time) { badge = 'Aktif'; note = `${this.L(() => fmtTime(Math.max(0, P.blitzUntil - g.time)))} kaldı · alırsan süre uzar`; } break;
+          case 'plane': note = `Başkentinde ${this.L(() => fmtK(P.capital >= 0 ? g.troopsAt(P.capital, me) : 0))} asker var`; break;
+          case 'missile': note = 'Başkentlere atılamaz · hava koruma %15 ihtimalle düşürür'; break;
+          case 'rebellion': {
+            const opts = g.countries.filter((c) => c.alive && !c.isRebel && c.id !== me && !g.isAlly(me, c.id)).map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+            extra = opts ? `<select id="rebelSel">${opts}</select>` : '<small class="si-note">İsyan çıkarılacak ülke yok.</small>';
+            if (!opts) dis = true;
+            break;
+          }
+          case 'cityDef': { const n = count((c) => c.cityDef); if (n) note = `${n} şehrinde var`; break; }
+          case 'airDef': { const n = count((c) => c.airDef); if (n) note = `${n} şehrinde var`; break; }
+          default: break;
         }
-        const label = it.target && it.target !== 'country' ? 'Şehir Seç' : 'Satın Al';
-        return `<li class="item"><div class="it-main"><div class="it-h"><b>${it.name}</b><span class="price">${fmtMoney(pr)}${pr !== G.PRICES[it.key] ? ` <s>${fmtMoney(G.PRICES[it.key])}</s>` : ''}</span></div>
-          <p>${it.desc}${note ? ` <small>${note}</small>` : ''}</p>${extra}</div>
-          <button class="btn" data-act="buy" data-item="${it.key}" ${dis ? 'disabled' : ''}>${label}</button></li>`;
+        const need = P.money < pr && !badge ? `<span class="need">${fmtMoney(Math.round((pr - P.money) * 100) / 100)} eksik</span>` : '';
+        const label = it.target && it.target !== 'country' ? (it.key === 'missile' ? 'Hedef Seç' : 'Şehir Seç') : 'Satın Al';
+        return `<div class="sitem ${cls} ${dis ? 'dis' : ''}">
+          <div class="si-top"><span class="si-ic">${icon(SHOP_ICON[it.key])}</span>
+            <div class="si-t"><b>${it.name}</b>${badge ? `<span class="badge">${badge}</span>` : ''}</div>
+            <span class="price">${fmtMoney(pr)}${pr !== G.PRICES[it.key] ? ` <s>${fmtMoney(G.PRICES[it.key])}</s>` : ''}</span></div>
+          <p>${it.desc}</p>${note ? `<small class="si-note">${note}</small>` : ''}${extra}
+          <div class="si-f">${need}<button class="btn sm" data-act="buy" data-item="${it.key}" ${dis ? 'disabled' : ''}>${label}</button></div></div>`;
       };
-      const groups = GROUPS.map((gr) => `<h5>${gr.t}</h5><ul class="items">${gr.keys.map((k) => row(SHOP.find((s) => s.key === k))).join('')}</ul>`).join('');
-      return `<div class="shop scroll"><div class="wallet">Hazine <b>${this.L(() => fmtMoney(P.money))}</b></div>${groups}</div>`;
+      const inc = g.incomeOf(me);
+      const ideo = g.ideo(me);
+      const treasury = `<div class="treasury"><span class="tr-ic">${icon('coin')}</span>
+          <div class="tr-m"><small>Hazine</small><b>${this.L(() => fmtMoney(P.money))}</b></div>
+          <div class="tr-inc"><small>Gelir <b>+${inc}₺</b> / ${G.CFG.incomeInterval} sn</small><div class="bar">${this.LW(() => (P.incomeTimer / G.CFG.incomeInterval) * 100)}</div>
+            <small>${this.L(() => 'sonraki ödeme ' + Math.max(0, Math.ceil(G.CFG.incomeInterval - P.incomeTimer)) + ' sn')}${ideo.price < 1 ? ` · ${esc(ideo.name)}: fiyatlar %${Math.round((1 - ideo.price) * 100)} ucuz` : ''}</small></div></div>`;
+      const groups = GROUPS.map((gr) => `<h5 class="sh-h ${gr.cls}">${icon(gr.ic)}${gr.t}</h5>
+        <div class="shop-grid">${gr.keys.map((k) => card(SHOP.find((s) => s.key === k), gr.cls)).join('')}</div>`).join('');
+      return `<div class="shop scroll">${treasury}${groups}</div>`;
     }
 
     onPanelChange() { /* select değişiklikleri renderPanel'de korunur */ }
@@ -701,7 +770,15 @@
         case 'alliance': res(g.cmdPropose(me, id, 'alliance'), g.countries[id].allianceId !== null ? 'Katılma başvurusu tüm üyelere gönderildi.' : 'İttifak teklifi gönderildi.'); break;
         case 'join': res(g.cmdJoinRequest(me, id), 'Katılma başvurusu tüm üyelere gönderildi.'); break;
         case 'leave': res(g.cmdLeaveAlliance(me), 'İttifaktan ayrıldın.'); break;
-        case 'q': res(g.cmdQueueTroops(me, +b.dataset.dir)); break;
+        case 'q': {
+          // +1k / +5k / +10k: parası yettiği kadar sıraya ekler
+          const n = Math.max(1, +b.dataset.n || 1), dir = +b.dataset.dir;
+          let r = null, done = 0;
+          for (let i = 0; i < n; i++) { r = g.cmdQueueTroops(me, dir); if (r.err) break; done++; }
+          if (done > 0 && n > 1 && r && r.err) this.toast(`Para yettiği kadar sıraya eklendi: +${done}k`, 'info');
+          res(done > 0 ? { ok: true } : r);
+          break;
+        }
         case 'autodist': {
           // Anahtar yerinde değişir (kayarak); panel yeniden çizilmez ki geçiş animasyonu kesilmesin.
           const r = g.cmdSetAutoDist(me);
@@ -967,7 +1044,7 @@
           <button class="btn" data-gm="sound">${G.Audio && G.Audio.muted ? '🔇 Ses kapalı — aç' : '🔊 Ses açık — kapat'}</button>
           <button class="btn" data-gm="help">📖 Nasıl Oynanır</button>
           <button class="btn red" data-gm="menu">🏠 Ana Menüye Dön</button>
-          <p class="gm-info">${esc(g.player.name)} · ${fmtTime(g.time)} · Control-LGS ${G.VERSION_LABEL}</p></div>`;
+          <p class="gm-info">${esc(g.player.name)} · ${esc(((G.MapGen.TYPES.find((t) => t.key === g.mapType)) || { name: 'Kıta' }).name)} haritası · ${fmtTime(g.time)} · Control-LGS ${G.VERSION_LABEL}</p></div>`;
       this.dialog(sp ? '⏸ Duraklatıldı' : '☰ Oyun Menüsü', body, [], false, (e) => {
         const b = e.target.closest('[data-gm]');
         if (!b) return false;
@@ -1088,6 +1165,8 @@
       İlişkiler tekliflerin kabul edilme şansını etkiler. Müttefiklerini savaşa çağırabilirsin.</p></section>
     <section><h4>🎖 Askeri yönetim ve mağaza</h4><p>Asker üret (+1k = 1₺), <b>Sınırlara dağıt</b> ile yeni askerleri cepheye yolla, saldırı/savunma geliştir,
       ideolojine özel geliştirmeleri al, ordu kur (ordunun şehrine gelen askerler orduya katılır). Mağazada fabrika, blitzkrieg, uçak, füze, isyan ve savunmalar var.</p></section>
+    <section><h4>🗺 Haritalar</h4><p>Kıta, Pangea, Takımadalar, İç Deniz, İkiz Kıtalar ya da Rastgele. Takımadalarda ve ikiz kıtalarda
+      dar kara köprüleri kilit noktalardır; köprüyü tutan, karşı kıyıya geçişi tutar.</p></section>
     <section><h4>🌐 Çevrimiçi</h4><p>Giriş ekranında <b>Oda Kur</b> ile 5 harfli bir kod al, arkadaşların kodla katılsın. Harita oyuncu sayısına göre oluşur.
       Oyun odayı kuran cihazda çalışır; o sekme açık kalmalı.</p></section>
     <section><h4>⌨ Kısayollar</h4><p>WASD / oklar: kamera · tekerlek: yakınlaştır · 1–4: menüler · Boşluk: başkente dön · Q / sağ tık: iptal ·

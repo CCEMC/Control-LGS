@@ -70,7 +70,9 @@
       const N = opts.nCountries >= 2 && opts.nCountries <= 9 ? opts.nCountries : 9;
       this.nCountries = N;
       this.mp = opts.mp || null; // null: tek oyunculu · 'host': oyunu yöneten cihaz · 'client': katılan oyuncu
-      this.map = G.MapGen.generate(this.seed, N);
+      this.mapType = opts.mapType || 'kita'; // harita tipi: kita, pangea, adalar, icdeniz, ikiz
+      this.map = G.MapGen.generate(this.seed, N, this.mapType);
+      this.mapType = this.map.mapType;
       this.time = 0;
       this.phase = 'setup';
       this.version = 1; // sahiplik/ittifak değiştikçe artar (çizim önbelleği için)
@@ -1419,7 +1421,7 @@
       const strip = (c) => { const { pal, color, dark, light, ...rest } = c; return rest; };
       return {
         v: 1, seed: this.seed, time: this.time, phase: this.phase, nextId: this.nextId, playerId: this.playerId, over: this.over,
-        armyTimer: this.armyTimer, nCities: this.cities.length, nCountries: this.nCountries,
+        armyTimer: this.armyTimer, nCities: this.cities.length, nCountries: this.nCountries, mapType: this.mapType,
         cities: this.cities.map((c) => [c.owner, c.origOwner, c.factories, c.cityDef ? 1 : 0, c.airDef ? 1 : 0, c.building]),
         countries: this.countries.map(strip),
         units: this.units.filter((u) => !u.dead),
@@ -1432,7 +1434,7 @@
     static restore(d) {
       if (!d || d.v !== 1) throw new Error('Kayıt sürümü uyumsuz');
       const pc = d.countries[d.playerId];
-      const g = new Game({ seed: d.seed, playerName: pc.name, ideology: pc.ideology, nCountries: d.nCountries || 9 });
+      const g = new Game({ seed: d.seed, playerName: pc.name, ideology: pc.ideology, nCountries: d.nCountries || 9, mapType: d.mapType || 'kita' });
       if (g.cities.length !== d.nCities) throw new Error('Harita yeniden üretilemedi');
       g.listeners = [];
       g.time = d.time; g.phase = d.phase; g.nextId = d.nextId; g.playerId = d.playerId; g.over = d.over; g.armyTimer = d.armyTimer || 0;
