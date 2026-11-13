@@ -5,7 +5,7 @@
 (function () {
   'use strict';
   const G = window.G;
-  const BUILD = 'clgs-v14'; // host ve istemci aynı sürümü çalıştırmalı (harita aynı tohumdan aynı üretilsin)
+  const BUILD = 'clgs-v15'; // host ve istemci aynı sürümü çalıştırmalı (harita aynı tohumdan aynı üretilsin)
   const PROTO = 1;
   const PREFIX = 'control-lgs-';
   const ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -108,8 +108,9 @@
         }
         const name = cleanName(msg.name);
         if (this.started) {
-          // oyun sürerken: bağlantısı kopmuş bir oyuncu aynı adla geri dönebilir
-          const back = this.players.find((x) => !x.host && !x.connected && x.name === name);
+          // oyun sürerken: bağlantısı kopmuş bir oyuncu (lobide aldığı anahtarla) geri dönebilir
+          // yeniden bağlanma lobide verilen gizli anahtarla olur (aynı adı yazan başkası ülkeyi devralamaz)
+          const back = msg.token ? this.players.find((x) => !x.host && !x.connected && x.token === msg.token) : null;
           if (!back) { conn.send({ t: 'reject', msg: 'Bu odada oyun başladı. Yeni oyuncu katılamaz.' }); return; }
           back.conn = conn; back.connected = true; back.lastSeen = performance.now(); back.queue = [];
           const c = this.game.countries[back.cid];
@@ -121,7 +122,8 @@
         if (this.players.length >= MAX_PLAYERS) { conn.send({ t: 'reject', msg: `Oda dolu (en fazla ${MAX_PLAYERS} oyuncu).` }); return; }
         let nm = name, k = 2;
         while (this.players.some((x) => x.name === nm)) nm = `${name.slice(0, 19)} ${k++}`;
-        p = { key: conn.peer, name: nm, ideology: G.IDEO[msg.ideology] ? msg.ideology : 'demokrasi', host: false, conn, connected: true, cid: null, queue: [], lastSeen: performance.now() };
+        p = { key: conn.peer, name: nm, ideology: G.IDEO[msg.ideology] ? msg.ideology : 'demokrasi', host: false, conn, connected: true, cid: null, queue: [], lastSeen: performance.now(),
+          token: Array.from({ length: 16 }, () => ALPHA[Math.floor(Math.random() * ALPHA.length)]).join('') };
         this.players.push(p);
         this.lobbyChanged();
         return;
@@ -140,7 +142,7 @@
         this.lobbyChanged();
         return;
       }
-      // oyun sürüyorsa ülkesi bota geçer; aynı adla geri dönerse kaldığı yerden devam eder
+      // oyun sürüyorsa ülkesi bota geçer; aynı cihazdan geri dönerse kaldığı yerden devam eder
       const c = this.game.countries[p.cid];
       if (c && c.alive) {
         c.isBot = true;
@@ -154,7 +156,7 @@
     setMap(t) { if (this.started) return; this.mapType = t; this.lobbyChanged(); }
     lobbyChanged() {
       const st = this.lobbyState();
-      for (const p of this.players) if (!p.host) this.send(p, { t: 'lobby', ...st, you: p.name });
+      for (const p of this.players) if (!p.host) this.send(p, { t: 'lobby', ...st, you: p.name, token: p.token });
       if (this.cb.onLobby) this.cb.onLobby(st, this);
     }
     // Oyunu başlat: harita oyuncu sayısı kadar ülkeyle üretilir, ülkeler rastgele dağıtılır
@@ -254,7 +256,9 @@
           const conn = peer.connect(PREFIX + code, { reliable: true, serialization: 'json' });
           this.conn = conn;
           conn.on('open', () => {
-            conn.send({ t: 'hello', name: this.me.name, ideology: this.me.ideology, build: BUILD, proto: PROTO });
+            let token = null;
+            try { token = localStorage.getItem('clgs_tok_' + code); } catch (e) { /* yok */ }
+            conn.send({ t: 'hello', name: this.me.name, ideology: this.me.ideology, build: BUILD, proto: PROTO, token });
           });
           conn.on('data', (msg) => {
             if (!done && msg && (msg.t === 'lobby' || msg.t === 'start')) { done = true; clearTimeout(to); resolve(); }
@@ -276,7 +280,10 @@
       if (!msg || typeof msg !== 'object') return;
       this.lastMsg = performance.now();
       switch (msg.t) {
-        case 'lobby': if (this.cb.onLobby) this.cb.onLobby(msg, this); break;
+        case 'lobby':
+          if (msg.token) { try { localStorage.setItem('clgs_tok_' + this.code, msg.token); } catch (e) { /* yok */ } }
+          if (this.cb.onLobby) this.cb.onLobby(msg, this);
+          break;
         case 'reject': this.lost(msg.msg); break;
         case 'start': this.onStart(msg); break;
         case 'snap':

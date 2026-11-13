@@ -114,14 +114,14 @@
     ideoBox.addEventListener('click', (e) => {
       const b = e.target.closest('.ideo'); if (!b) return;
       startState.ideology = b.dataset.k;
-      ideoBox.querySelectorAll('.ideo').forEach((x) => x.classList.toggle('on', x === b));
+      ideoBox.querySelectorAll('.ideo').forEach((x) => { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', String(x === b)); });
       validate();
     });
     // harita seçimi
     try { const mt = localStorage.getItem('hc_map'); if (MAPS.some((t) => t.key === mt)) startState.mapType = mt; } catch (e) { /* yok */ }
     const mapBox = $('mapCards');
     mapBox.innerHTML = MAPS.map((t) => `<button class="mapc" data-t="${t.key}" title="${t.desc}"><canvas></canvas><b>${t.name}</b><small>${t.desc}</small></button>`).join('');
-    const syncMap = () => mapBox.querySelectorAll('.mapc').forEach((b) => b.classList.toggle('on', b.dataset.t === startState.mapType));
+    const syncMap = () => mapBox.querySelectorAll('.mapc').forEach((b) => { b.classList.toggle('on', b.dataset.t === startState.mapType); b.setAttribute('aria-pressed', String(b.dataset.t === startState.mapType)); });
     syncMap();
     mapBox.addEventListener('click', (e) => {
       const b = e.target.closest('.mapc'); if (!b || b.disabled) return;
@@ -135,7 +135,7 @@
     const nextPreview = () => { if (pi >= cvs.length) return; const b = cvs[pi++]; drawMapPreview(b.querySelector('canvas'), b.dataset.t); setTimeout(nextPreview, 30); };
     setTimeout(nextPreview, 60);
     const modeBox = $('modeBtns');
-    const syncMode = () => modeBox.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x.dataset.m === startState.mode));
+    const syncMode = () => modeBox.querySelectorAll('button').forEach((x) => { x.classList.toggle('on', x.dataset.m === startState.mode); x.setAttribute('aria-pressed', String(x.dataset.m === startState.mode)); });
     modeBox.addEventListener('click', (e) => {
       const b = e.target.closest('button'); if (!b) return;
       startState.mode = b.dataset.m; syncMode();
@@ -306,7 +306,7 @@
       if (net && net.role === 'client') {
         net.cb.onSnap = () => ui.syncInbox();
         net.cb.onCmdError = (m) => ui.toast(m, 'bad');
-        net.cb.onLost = (m) => ui.dialog('Bağlantı koptu', `<p>${esc(m)}</p><p class="note">Bağlantın koptuysa aynı adla aynı odaya yeniden katılarak ülkene kaldığın yerden devam edebilirsin (bu arada ülkeni bot yönetir). Oda sahibi oyunu kapattıysa oyun sona ermiştir.</p>`,
+        net.cb.onLost = (m) => ui.dialog('Bağlantı koptu', `<p>${esc(m)}</p><p class="note">Bağlantın koptuysa bu cihazdan aynı odaya yeniden katılarak ülkene kaldığın yerden devam edebilirsin (bu arada ülkeni bot yönetir). Oda sahibi oyunu kapattıysa oyun sona ermiştir.</p>`,
           [{ label: 'Ana Menü', cls: 'red', fn: () => { location.href = location.pathname + '?oda=' + net.code; } }]);
       }
       ui.toast(game.mp === 'host' ? `Oda ${net.code}: oyun başladı. Herkes fabrikalarını kurunca savaş saati işlemeye başlar.`
@@ -407,6 +407,7 @@
     window.addEventListener('keydown', (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
       if (keyMap[e.code]) { keys[keyMap[e.code]] = true; e.preventDefault(); }
+      if (!$('endScreen').classList.contains('hidden')) return; // oyun sonu ekranı açıkken menü kısayolları çalışmaz
       if (e.code === 'KeyQ') ui.cancel();
       if (e.code === 'KeyM') $('sndBtn').click();
       if (e.code === 'Escape') { if (ui.dialogOpen()) ui.closeDialog(); else if (!ui.cancel()) ui.openGameMenu(); }

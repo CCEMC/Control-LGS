@@ -382,8 +382,9 @@
     const owner = new Int32Array(cities.length).fill(-1);
     const counts = new Array(N).fill(0);
     capitals.forEach((cid, k) => { owner[cid] = k; counts[k] = 1; });
+    const tie = Array.from({ length: N }, () => rnd()); // eşitlikte sabit rastgele sıra (sıralama algoritmasından bağımsız)
     for (;;) {
-      const order = [...Array(N).keys()].sort((a, b) => counts[a] - counts[b] || rnd() - 0.5);
+      const order = [...Array(N).keys()].sort((a, b) => counts[a] - counts[b] || tie[a] - tie[b]);
       let grew = false;
       for (const k of order) {
         let bc = -1, bdist = Infinity;

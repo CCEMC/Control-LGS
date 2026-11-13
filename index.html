@@ -26,7 +26,7 @@
 
     <div id="topbar" class="frame">
       <div class="tb-country"><span id="tbSwatch" class="sw big"></span><b id="tbName"></b><small id="tbIdeo"></small></div>
-      <div class="tb-stat" id="tbMoneyBox" title="Hazine — her 7 saniyede fabrika başına 1₺">
+      <div class="tb-stat" id="tbMoneyBox" title="Hazine — her 15 saniyede fabrika başına 1₺">
         <span class="lbl">Hazine</span><b id="tbMoney"></b>
         <div class="incbar"><i id="tbInc"></i></div><small id="tbIncTxt"></small>
       </div>
@@ -38,9 +38,9 @@
       <div class="tb-flag war hidden" id="tbWar"></div>
       <div class="tb-flag net hidden" id="tbNet"></div>
       <span class="tb-btns">
-        <button id="sndBtn" class="tb-btn" title="Ses ve müzik: aç / kapat (M)">🔊</button>
-        <button id="fsBtn" class="tb-btn" title="Tam ekran">⛶</button>
-        <button id="menuBtn" class="tb-btn" title="Oyun menüsü (Esc)">☰</button>
+        <button id="sndBtn" class="tb-btn" title="Ses ve müzik: aç / kapat (M)" aria-label="Ses ve müzik">🔊</button>
+        <button id="fsBtn" class="tb-btn" title="Tam ekran" aria-label="Tam ekran">⛶</button>
+        <button id="menuBtn" class="tb-btn" title="Oyun menüsü (Esc)" aria-label="Oyun menüsü">☰</button>
       </span>
     </div>
 
@@ -51,19 +51,19 @@
       <div id="panelBody"></div>
     </section>
 
-    <div id="toasts"></div>
-    <div id="inbox"></div>
+    <div id="toasts" role="status" aria-live="polite"></div>
+    <div id="inbox" aria-live="polite"></div>
     <div id="actionBar" class="frame hidden"></div>
     <div id="setupBanner" class="frame hidden"></div>
     <div id="tooltip" class="frame hidden"></div>
 
     <div id="dpad" class="hidden">
-      <button data-k="w" class="up">▲</button>
-      <button data-k="a" class="left">◀</button>
-      <button data-k="d" class="right">▶</button>
-      <button data-k="s" class="down">▼</button>
-      <button id="zoomIn" class="zin">+</button>
-      <button id="zoomOut" class="zout">−</button>
+      <button data-k="w" class="up" aria-label="Kamera yukarı">▲</button>
+      <button data-k="a" class="left" aria-label="Kamera sola">◀</button>
+      <button data-k="d" class="right" aria-label="Kamera sağa">▶</button>
+      <button data-k="s" class="down" aria-label="Kamera aşağı">▼</button>
+      <button id="zoomIn" class="zin" aria-label="Yakınlaştır">+</button>
+      <button id="zoomOut" class="zout" aria-label="Uzaklaştır">−</button>
     </div>
   </div>
 
@@ -112,7 +112,7 @@
         <div class="or">ya da arkadaşlarınla çevrimiçi</div>
         <div id="onlineRow" class="on-row">
           <button id="hostBtn" class="btn green" disabled>🌐 Oda Kur</button>
-          <span class="on-join"><input id="codeIn" maxlength="5" placeholder="ODA KODU" autocomplete="off" autocapitalize="characters" spellcheck="false"><button id="joinBtn" class="btn" disabled>Katıl</button></span>
+          <span class="on-join"><input id="codeIn" maxlength="5" placeholder="ODA KODU" aria-label="Oda kodu" autocomplete="off" autocapitalize="characters" spellcheck="false"><button id="joinBtn" class="btn" disabled>Katıl</button></span>
         </div>
         <div id="lobby" class="lobby hidden"></div>
         <div id="onlineHint" class="hint">2–9 oyuncu · harita oyuncu sayısı kadar ülkeyle oluşturulur</div>

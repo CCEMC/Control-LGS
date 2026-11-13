@@ -1,5 +1,6 @@
 // Servis çalışanı: oyunu çevrimdışı çalıştırır. Dosyaları değiştirince VERSION'ı arttır.
-const VERSION = 'clgs-v14'; // js/net.js içindeki BUILD ile aynı olmalı (çevrimiçi sürüm kontrolü)
+const VERSION = 'clgs-v15'; // js/net.js içindeki BUILD ile aynı olmalı (çevrimiçi sürüm kontrolü)
+const FONTS = 'clgs-fonts'; // yazı tipi önbelleği sürüm değişince silinmez (çevrimdışı yazı tipleri kalsın)
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/style.css',
   './js/util.js', './js/mapgen.js', './js/game.js', './js/bot.js', './js/render.js', './js/audio.js', './js/ui.js', './js/net.js', './js/main.js',
@@ -12,7 +13,7 @@ self.addEventListener('install', (e) => {
 
 self.addEventListener('activate', (e) => {
   e.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k)))).then(() => self.clients.claim()),
+    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== VERSION && k !== FONTS).map((k) => caches.delete(k)))).then(() => self.clients.claim()),
   );
 });
 
@@ -23,7 +24,7 @@ self.addEventListener('fetch', (e) => {
   // Google Fonts: önce önbellek, arkada güncelle
   if (url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') {
     e.respondWith(
-      caches.open(VERSION + '-fonts').then((c) => c.match(req).then((hit) => {
+      caches.open(FONTS).then((c) => c.match(req).then((hit) => {
         const net = fetch(req).then((res) => { if (res.ok || res.type === 'opaque') c.put(req, res.clone()); return res; }).catch(() => hit);
         return hit || net;
       })),

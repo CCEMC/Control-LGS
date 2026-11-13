@@ -143,6 +143,15 @@
       noise({ dur: 0.9, vol: 0.2, delay: 0.1, filter: { type: 'bandpass', f: 500, f2: 120, q: 0.5 } });
       for (let i = 0; i < 6; i++) noise({ dur: 0.05, vol: 0.12, delay: 0.3 + Math.random() * 0.9, filter: { type: 'highpass', f: 2500 } });
     },
+    // topçu atışı: namlu patlaması + uzaktan gelen düşüş gümbürtüsü
+    cannon() {
+      tone({ f: 120, f2: 38, dur: 0.45, vol: 0.4, type: 'sine', a: 0.003 });
+      noise({ dur: 0.35, vol: 0.32, a: 0.002, filter: { type: 'lowpass', f: 1800, f2: 200, q: 0.7 } });
+      for (let i = 0; i < 3; i++) {
+        noise({ dur: 0.5, vol: 0.16, delay: 0.75 + i * 0.12, filter: { type: 'lowpass', f: 700, f2: 90, q: 0.6 } });
+        tone({ f: 70, f2: 30, dur: 0.4, vol: 0.14, type: 'sine', delay: 0.75 + i * 0.12 });
+      }
+    },
     missile() { noise({ dur: 1.4, vol: 0.28, a: 0.4, filter: { type: 'bandpass', f: 300, f2: 2200, q: 0.9 } }); tone({ f: 70, f2: 160, dur: 1.2, vol: 0.14, type: 'sawtooth', filter: { type: 'lowpass', f: 400 } }); },
     plane() {
       for (let i = 0; i < 3; i++) tone({ f: 92 + i * 3, f2: 80, dur: 1.4, vol: 0.07, a: 0.4, hold: 0.9, type: 'sawtooth', delay: i * 0.06, filter: { type: 'lowpass', f: 420 } });
@@ -153,7 +162,7 @@
     lose() { [329.6, 293.7, 261.6, 220, 164.8].forEach((f, i) => horn(f, 1.3, 0.1, i * 0.7)); gong(0.14, 82, 6, null, 0.2); },
   };
   const lastPlay = {};
-  const MIN_GAP = { click: 0.04, troop: 0.35, coin: 0.4, msg: 0.5, error: 0.3, good: 0.3, buy: 0.2, march: 0.35, zap: 0.2, gongSoft: 1.2 };
+  const MIN_GAP = { cannon: 0.6, click: 0.04, troop: 0.35, coin: 0.4, msg: 0.5, error: 0.3, good: 0.3, buy: 0.2, march: 0.35, zap: 0.2, gongSoft: 1.2 };
   function sfx(name) {
     if (!ready() || !SFX[name]) return;
     const now = ctx.currentTime, gap = MIN_GAP[name] || 0.08;
@@ -322,6 +331,7 @@
       case 'troopReady': if (ev.cid === me) sfx('troop'); break;
       case 'recall': if (ev.cid === me) { sfx('march'); sfx('horn'); } break;
       case 'armyJoin': if (ev.cid === me) sfx('good'); break;
+      case 'cannon': if (ev.cid === me || ev.target === me) sfx('cannon'); break;
       case 'buy':
         if (ev.item === 'missile') sfx('missile');
         else if (ev.item === 'plane') sfx('plane');
