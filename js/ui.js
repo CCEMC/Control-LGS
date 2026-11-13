@@ -558,9 +558,7 @@
       for (const u of units) byOwner.set(u.owner, (byOwner.get(u.owner) || 0) + u.troops);
       const troops = [...byOwner].map(([k, v]) => `<div><span class="sw" style="background:${g.countries[k].color}"></span>${esc(g.countries[k].name)}: <b>${fmtK(v)}</b></div>`).join('') || '<div><i>asker yok</i></div>';
       const inc = g.incomingAttacks(cityId).length;
-      const tr = g.terrainOf(c);
-      const tDefPct = Math.round((tr.def - 1) * 100), tAtkPct = Math.round((tr.atk - 1) * 100);
-      const struct = [`${tr.icon} sav. ${tDefPct >= 0 ? '+' : ''}%${tDefPct}, sald. ${tAtkPct >= 0 ? '+' : ''}%${tAtkPct}`];
+      const struct = [];
       if (c.factories) struct.push(`${c.factories} fabrika`);
       if (c.building.length) struct.push(`🏗 ${c.building.length} fabrika inşaatta`);
       if (c.cityDef) struct.push('şehir savunması');
@@ -573,7 +571,7 @@
         if (g.friendly(sel.owner, c.owner)) actHint = '<div class="tt-hint ok">✓ Tıkla: destek / taşı</div>';
         else if (g.hostile(sel.owner, c.owner) && g.cities[sel.city].neighbors.includes(cityId)) {
           const send = Math.min(sel.troops, this.amountK * 1000);
-          const atkM = g.unitAtk(sel, c.owner, c, g.cities[sel.city]);
+          const atkM = g.unitAtk(sel, c.owner);
           const defT = units.reduce((sum, u) => sum + (g.friendly(u.owner, c.owner) ? u.troops : 0), 0);
           if (defT <= 0) actHint = '<div class="tt-hint ok">⚔ Tıkla: saldır (boş şehir)</div>';
           else {
@@ -586,7 +584,7 @@
         else actHint = '<div class="tt-hint">✗ Sınır komşusu değil</div>';
       }
       const html = `<div class="tt-h">${isCap ? '★ ' : ''}${esc(c.name)}</div>
-        <div class="tt-o"><span class="sw" style="background:${o.color}"></span>${esc(o.name)}${isCap ? ' · başkent' : ''}${g.isBorderCity(cityId) ? ' · sınır' : ''} · ${tr.icon} ${esc(tr.name)}</div>
+        <div class="tt-o"><span class="sw" style="background:${o.color}"></span>${esc(o.name)}${isCap ? ' · başkent' : ''}${g.isBorderCity(cityId) ? ' · sınır' : ''}</div>
         ${troops}${struct.length ? `<div class="tt-s">${struct.join(' · ')}</div>` : ''}${inc ? `<div class="tt-w">⚔︎ saldırı altında!</div>` : ''}${units.some((u) => u.weak) ? `<div class="tt-w">❗ Fabrikaya bağlı değil: asker −%50</div>` : ''}${actHint}`;
       const changed = html !== this._tipHtml || this._tipHidden !== false;
       if (changed) {
@@ -1461,8 +1459,7 @@
       Kendi toprağın üzerinden hiçbir fabrikaya bağlı olmayan şehirlerdeki askerler <b>❗ %50 zayıf ve yavaştır</b>.</p></section>
     <section><h4>⚔ Asker ve savaş</h4><p>Birliğe (haritadaki asker sayısına) dokun, miktarı seç, hedef şehre dokun: kendi şehrine taşır, <b>komşu düşman şehrine saldırır</b>.
       Saldırı sınırda hemen başlar; büyük birlik şehri daha çabuk alır. Bir ülkeye saldırmak için önce Diplomasi'den <b>savaş hakkı</b> alıp (20 sn) savaş ilan et.
-      Saldırdığın şehrin çıkış şehri saldırıya uğrarsa birliğin yarısı savunmaya döner.
-      Yer şekilleri savaşı ve hızı etkiler: <b>🏔 Dağ</b> (+%65 savunma, −%28 saldırı), <b>⛰ Tepe</b> (+%35 savunma, −%15 saldırı), <b>🌲 Orman</b> (+%20 savunma, −%10 saldırı), <b>🌾 Ova</b> (+%10 saldırı, −%5 savunma). Dağ ve tepelerden daha alçak şehirlere saldıran birlikler <b>+%10 yüksek irtifa bonusu</b> alır.</p></section>
+      Saldırdığın şehrin çıkış şehri saldırıya uğrarsa birliğin yarısı savunmaya döner.</p></section>
     <section><h4>🤝 Diplomasi</h4><p>Talep, destek ve takas teklif et; ittifak kur ya da bir ittifaka katıl; barış teklif et ya da teslim ol.
       İlişkiler tekliflerin kabul edilme şansını etkiler. Müttefiklerini savaşa çağırabilirsin.</p></section>
     <section><h4>🎖 Askeri yönetim ve mağaza</h4><p>Asker üret (+1k = 1₺), <b>Sınırlara dağıt</b> ile yeni askerleri cepheye yolla, saldırı/savunma geliştir,

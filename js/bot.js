@@ -115,7 +115,7 @@
         const t = game.cities[n];
         if (!game.hostile(cid, t.owner) || attacked.has(n)) continue;
         const effD = game.effDefense(t, game.defendersOf(n, cid));
-        const effA = avail * game.unitAtk(u, t.owner, t, here);
+        const effA = avail * game.unitAtk(u, t.owner);
         const margin = effA - effD * 1.18 - 1500;
         if (margin <= 0) continue;
         const isCap = game.countries.some((k) => k.capital === n && k.alive);

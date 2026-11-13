@@ -70,7 +70,6 @@
       const S = (this.layerScale = 0.5);
       const mk = () => { const c = document.createElement('canvas'); c.width = Math.ceil(map.W * S); c.height = Math.ceil(map.H * S); return c; };
       this.baseLayer = mk();
-      this.terrainLayer = mk();
       this.landLayer = mk();
       this.mapLayer = mk();
       const b = this.baseLayer.getContext('2d');
@@ -81,104 +80,6 @@
       b.setLineDash([2, 10]); b.strokeStyle = 'rgba(45,70,70,0.35)'; b.lineWidth = 1.6; b.stroke(this.coast); b.setLineDash([]);
       this.drawDecor(b);
       this.mapLayer.getContext('2d').drawImage(this.baseLayer, 0, 0);
-      this.renderTerrainLayer();
-    }
-
-    renderTerrainLayer() {
-      const g = this.game, S = this.layerScale;
-      const t = this.terrainLayer.getContext('2d');
-      t.setTransform(1, 0, 0, 1, 0, 0);
-      t.clearRect(0, 0, this.terrainLayer.width, this.terrainLayer.height);
-      t.setTransform(S, 0, 0, S, 0, 0);
-      const r = U.mulberry32((g.seed || 1) ^ 0x27d4eb2f);
-      const pts = (city, n, radMin, radMax) => {
-        const list = [];
-        const b = this.bbox[city.id];
-        const rx = Math.max(22, Math.min(radMax, (b[2] - b[0]) * 0.34));
-        const ry = Math.max(20, Math.min(radMax * 0.9, (b[3] - b[1]) * 0.34));
-        const a0 = r() * Math.PI * 2;
-        for (let i = 0; i < n; i++) {
-          const a = a0 + (i / n) * Math.PI * 2 + (r() - 0.5) * 0.45;
-          const k = radMin / radMax + r() * (1 - radMin / radMax);
-          list.push([city.x + Math.cos(a) * rx * k, city.y + Math.sin(a) * ry * k]);
-        }
-        list.sort((u, v) => u[1] - v[1]);
-        return list;
-      };
-      t.lineJoin = 'round'; t.lineCap = 'round';
-      for (const city of g.cities) {
-        const tr = city.terrain || 'ova';
-        t.save();
-        t.clip(this.cityPaths[city.id]);
-        if (tr === 'dag') {
-          t.fillStyle = 'rgba(54,36,16,0.11)'; t.fill(this.cityPaths[city.id]);
-          const ps = pts(city, 5, 22, 54);
-          for (let i = 0; i < ps.length; i++) {
-            const [px, py] = ps[i], h = 16 + r() * 11, w = 15 + r() * 9, cr = (r() - 0.5) * 4;
-            t.fillStyle = 'rgba(250,240,210,0.52)';
-            t.beginPath(); t.moveTo(px, py - h); t.lineTo(px - w, py + 4); t.lineTo(px + cr, py + 4); t.closePath(); t.fill();
-            t.fillStyle = 'rgba(54,36,16,0.34)';
-            t.beginPath(); t.moveTo(px, py - h); t.lineTo(px + cr, py + 4); t.lineTo(px + w, py + 4); t.closePath(); t.fill();
-            if (h >= 21) {
-              t.fillStyle = 'rgba(255,250,236,0.72)';
-              t.beginPath(); t.moveTo(px, py - h); t.lineTo(px - w * 0.3, py - h * 0.55); t.lineTo(px + cr * 0.45, py - h * 0.62);
-              t.lineTo(px + w * 0.28, py - h * 0.54); t.closePath(); t.fill();
-            }
-            t.strokeStyle = 'rgba(44,28,12,0.74)'; t.lineWidth = 1.6;
-            t.beginPath(); t.moveTo(px - w, py + 4); t.lineTo(px, py - h); t.lineTo(px + w, py + 4);
-            t.moveTo(px, py - h); t.lineTo(px + cr, py + 3); t.stroke();
-            t.lineWidth = 1; t.strokeStyle = 'rgba(44,28,12,0.45)';
-            t.beginPath();
-            for (let k = 1; k <= 3; k++) {
-              const fy = py - h + (h + 3) * (k * 0.24);
-              t.moveTo(px + cr * (k * 0.24) + 1.5, fy);
-              t.lineTo(px + w * (k * 0.24) * 0.88, fy + 2.5);
-            }
-            t.stroke();
-          }
-        } else if (tr === 'tepe') {
-          t.fillStyle = 'rgba(90,62,22,0.06)'; t.fill(this.cityPaths[city.id]);
-          const ps = pts(city, 4, 22, 52);
-          for (let i = 0; i < ps.length; i++) {
-            const [px, py] = ps[i], w = 15 + r() * 7, h = 9 + r() * 5;
-            t.fillStyle = 'rgba(250,240,210,0.34)';
-            t.beginPath(); t.moveTo(px - w, py + 3); t.quadraticCurveTo(px, py - h * 2, px + w, py + 3); t.closePath(); t.fill();
-            t.fillStyle = 'rgba(58,40,20,0.20)';
-            t.beginPath(); t.moveTo(px, py - h * 0.98); t.quadraticCurveTo(px + w * 0.6, py - h * 0.7, px + w, py + 3); t.lineTo(px + 2, py + 3); t.closePath(); t.fill();
-            t.strokeStyle = 'rgba(58,40,20,0.56)'; t.lineWidth = 1.4;
-            t.beginPath(); t.moveTo(px - w, py + 3); t.quadraticCurveTo(px, py - h * 2, px + w, py + 3); t.stroke();
-            t.lineWidth = 0.9; t.beginPath();
-            for (let k = -1; k <= 1; k++) { t.moveTo(px + 4 + k * 4, py - 1); t.lineTo(px + 7 + k * 4, py + 3); }
-            t.stroke();
-          }
-        } else if (tr === 'orman') {
-          t.fillStyle = 'rgba(42,68,26,0.08)'; t.fill(this.cityPaths[city.id]);
-          const ps = pts(city, 6, 20, 54);
-          for (let i = 0; i < ps.length; i++) {
-            const [px, py] = ps[i], sz = 7 + r() * 4;
-            t.fillStyle = 'rgba(46,72,30,0.44)';
-            t.beginPath();
-            t.moveTo(px + sz * 0.75, py - sz * 0.35); t.arc(px, py - sz * 0.35, sz * 0.75, 0, Math.PI * 2);
-            t.moveTo(px - sz * 0.45 + sz * 0.55, py + sz * 0.1); t.arc(px - sz * 0.45, py + sz * 0.1, sz * 0.55, 0, Math.PI * 2);
-            t.moveTo(px + sz * 0.45 + sz * 0.55, py + sz * 0.1); t.arc(px + sz * 0.45, py + sz * 0.1, sz * 0.55, 0, Math.PI * 2);
-            t.fill();
-            t.strokeStyle = 'rgba(38,52,24,0.52)'; t.lineWidth = 1.1;
-            t.beginPath(); t.moveTo(px, py + sz * 0.5); t.lineTo(px, py + sz); t.stroke();
-          }
-        } else {
-          const ps = pts(city, 3, 24, 48);
-          t.strokeStyle = 'rgba(62,44,20,0.28)'; t.lineWidth = 1.1;
-          for (let i = 0; i < ps.length; i++) {
-            const [px, py] = ps[i];
-            t.beginPath();
-            t.moveTo(px - 3, py + 2); t.lineTo(px - 5, py - 3);
-            t.moveTo(px, py + 2); t.lineTo(px, py - 4);
-            t.moveTo(px + 3, py + 2); t.lineTo(px + 5, py - 3);
-            t.stroke();
-          }
-        }
-        t.restore();
-      }
     }
 
     renderLandLayer() {
@@ -203,12 +104,6 @@
       c.strokeStyle = 'rgba(42,30,18,0.16)'; c.lineWidth = 18; c.stroke(this.coast);
       c.strokeStyle = 'rgba(62,46,28,0.22)'; c.lineWidth = 6; c.stroke(this.coast);
       c.globalCompositeOperation = 'source-over';
-      // yer şekilleri (dağ, tepe, orman) statik katmandan tek blit ile basılır
-      if (this.terrainLayer) {
-        c.setTransform(1, 0, 0, 1, 0, 0);
-        c.drawImage(this.terrainLayer, 0, 0);
-        c.setTransform(S, 0, 0, S, 0, 0);
-      }
       // iç şehir sınırlarını arazi katmanına bas (her karede binlerce çizgi tekrarını önler)
       c.lineJoin = 'round'; c.lineCap = 'round';
       c.strokeStyle = 'rgba(58,40,20,0.42)'; c.lineWidth = 1.8; c.stroke(this.inner);

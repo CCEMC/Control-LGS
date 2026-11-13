@@ -164,13 +164,6 @@
   ];
   const TYPE_SCALE = { kita: 1, pangea: 1.04, adalar: 1.28, icdeniz: 1.16, ikiz: 1.12 };
 
-  const TERRAIN = {
-    ova:   { key: 'ova',   name: 'Ova',   icon: '🌾', elev: 0, atk: 1.10, def: 0.95, move: 0.90, desc: 'Saldırı +%10 · Savunma −%5 · Hız +%10' },
-    orman: { key: 'orman', name: 'Orman', icon: '🌲', elev: 1, atk: 0.90, def: 1.20, move: 1.15, desc: 'Saldırı −%10 · Savunma +%20 · Hız −%15' },
-    tepe:  { key: 'tepe',  name: 'Tepe',  icon: '⛰', elev: 2, atk: 0.85, def: 1.35, move: 1.20, desc: 'Saldırı −%15 · Savunma +%35 · İrtifa +%10' },
-    dag:   { key: 'dag',   name: 'Dağ',   icon: '🏔', elev: 3, atk: 0.72, def: 1.65, move: 1.35, desc: 'Saldırı −%28 · Savunma +%65 · İrtifa +%10' },
-  };
-
   function segDist(p, a, b) {
     const vx = b[0] - a[0], vy = b[1] - a[1];
     let t = ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / (vx * vx + vy * vy);
@@ -498,48 +491,6 @@
       if (!moved) break;
     }
 
-    // Yer şekilleri: sıra dağlar (3 fay ekseni) + yükselti/nem gürültüsü; başkentler her zaman ova kalır ve her ülkeye dengeli dağılır
-    {
-      const trnd = mulberry32(seed ^ 0x6c8e9cf5);
-      const tnz = makeNoise(seed * 13 + 37);
-      const ridges = Array.from({ length: 3 }, () => {
-        const a0 = trnd() * Math.PI * 2, a1 = a0 + (trnd() - 0.5) * 1.4;
-        const r0 = 0.15 + trnd() * 0.25, r1 = 0.25 + trnd() * 0.3;
-        return [
-          [W * 0.5 + Math.cos(a0) * ax * r0, H * 0.5 + Math.sin(a0) * by * r0],
-          [W * 0.5 - Math.cos(a1) * ax * r1, H * 0.5 - Math.sin(a1) * by * r1],
-        ];
-      });
-      const capSet = new Set(capitals);
-      const elevScore = new Float32Array(cities.length);
-      const moistScore = new Float32Array(cities.length);
-      for (const c of cities) {
-        let rd = Infinity;
-        for (const [ra, rb] of ridges) rd = Math.min(rd, segDist([c.x, c.y], ra, rb)[0]);
-        const ridgeBoost = Math.max(0, 1 - rd / (340 * sc)) * 0.55;
-        const nElev = tnz.fbm(c.x * fq * 1.35 + 5.1, c.y * fq * 1.35 - 2.7, 4);
-        elevScore[c.id] = nElev + ridgeBoost + (c.coastal ? -0.12 : 0.08);
-        moistScore[c.id] = tnz.fbm(c.x * fq * 1.6 - 8.4, c.y * fq * 1.6 + 6.2, 3);
-        c.terrain = 'ova';
-      }
-      for (let k = 0; k < N; k++) {
-        const list = cities.filter((c) => owner[c.id] === k && !capSet.has(c.id));
-        if (!list.length) continue;
-        list.sort((a, b) => elevScore[b.id] - elevScore[a.id] || a.id - b.id);
-        const nDag = Math.min(list.length, Math.max(1, Math.round(list.length * 0.18)));
-        const nTepe = Math.min(list.length - nDag, Math.max(1, Math.round(list.length * 0.24)));
-        for (let i = 0; i < list.length; i++) {
-          if (i < nDag) list[i].terrain = 'dag';
-          else if (i < nDag + nTepe) list[i].terrain = 'tepe';
-        }
-        const low = list.slice(nDag + nTepe).sort((a, b) => moistScore[b.id] - moistScore[a.id] || a.id - b.id);
-        const nOrman = Math.min(low.length, Math.max(1, Math.round(list.length * 0.28)));
-        for (let i = 0; i < low.length; i++) {
-          low[i].terrain = i < nOrman ? 'orman' : 'ova';
-        }
-      }
-    }
-
     return { W, H, seed, nCountries: N, mapType: type, cities, edges, owner: Array.from(owner), capitals, countryNames: COUNTRY_NAMES.slice() };
   }
 
@@ -634,6 +585,5 @@
     return capitals;
   }
 
-  G.TERRAIN = TERRAIN;
-  G.MapGen = { generate, TYPES, TERRAIN };
+  G.MapGen = { generate, TYPES };
 })();
