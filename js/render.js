@@ -99,6 +99,10 @@
       c.globalCompositeOperation = 'source-atop';
       c.fillStyle = this.grainPattern;
       c.fillRect(0, 0, g.map.W, g.map.H);
+      // iç kıyı gölge şeridi (kara tarafında antika harita derinliği)
+      c.lineJoin = 'round';
+      c.strokeStyle = 'rgba(42,30,18,0.16)'; c.lineWidth = 18; c.stroke(this.coast);
+      c.strokeStyle = 'rgba(62,46,28,0.22)'; c.lineWidth = 6; c.stroke(this.coast);
       c.globalCompositeOperation = 'source-over';
       // iç şehir sınırlarını arazi katmanına bas (her karede binlerce çizgi tekrarını önler)
       c.lineJoin = 'round'; c.lineCap = 'round';
@@ -522,14 +526,66 @@
     }
 
     drawDecor(ctx) {
-      const m = this.game.map;
-      // pusula gülü
-      const cx = 250, cy = m.H - 250, R = 120;
+      const g = this.game, m = g.map;
+      // 1) Antika harita dış çerçevesi (çift çerçeve + dönüşümlü derece şeridi)
+      ctx.save();
+      const pad = 16, bw = 10, x0 = pad, y0 = pad, w0 = m.W - pad * 2, h0 = m.H - pad * 2;
+      ctx.strokeStyle = 'rgba(58,40,20,0.75)'; ctx.lineWidth = 2.6;
+      ctx.strokeRect(x0, y0, w0, h0);
+      ctx.lineWidth = 1.4;
+      ctx.strokeRect(x0 + bw, y0 + bw, w0 - bw * 2, h0 - bw * 2);
+      const step = 160;
+      ctx.fillStyle = 'rgba(58,40,20,0.72)';
+      for (let x = x0 + bw, idx = 0; x < x0 + w0 - bw; x += step, idx++) {
+        if (idx % 2 === 0) {
+          const sw = Math.min(step, x0 + w0 - bw - x);
+          ctx.fillRect(x, y0, sw, bw);
+          ctx.fillRect(x, y0 + h0 - bw, sw, bw);
+        }
+      }
+      for (let y = y0 + bw, idx = 0; y < y0 + h0 - bw; y += step, idx++) {
+        if (idx % 2 === 0) {
+          const sh = Math.min(step, y0 + h0 - bw - y);
+          ctx.fillRect(x0, y, bw, sh);
+          ctx.fillRect(x0 + w0 - bw, y, bw, sh);
+        }
+      }
+      for (const [kx, ky] of [[x0, y0], [x0 + w0 - bw, y0], [x0, y0 + h0 - bw], [x0 + w0 - bw, y0 + h0 - bw]]) {
+        ctx.fillStyle = '#d4b362'; ctx.fillRect(kx, ky, bw, bw);
+        ctx.strokeStyle = INK; ctx.lineWidth = 1.2; ctx.strokeRect(kx, ky, bw, bw);
+      }
+      // 2) Portolan kerteriz (rhumb) çizgileri — çerçeve içinde kalır
+      ctx.beginPath(); ctx.rect(x0 + bw, y0 + bw, w0 - bw * 2, h0 - bw * 2); ctx.clip();
+      const cx = 250, cy = m.H - 250, R = 120, diag = Math.hypot(m.W, m.H);
+      ctx.strokeStyle = 'rgba(58,40,20,0.08)'; ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let i = 0; i < 16; i++) {
+        const a = (i / 16) * Math.PI * 2;
+        ctx.moveTo(cx + Math.cos(a) * R * 0.8, cy + Math.sin(a) * R * 0.8);
+        ctx.lineTo(cx + Math.cos(a) * diag, cy + Math.sin(a) * diag);
+      }
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(130,52,24,0.06)';
+      ctx.beginPath();
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2;
+        ctx.moveTo(m.W - 220, 220);
+        ctx.lineTo(m.W - 220 + Math.cos(a) * diag, 220 + Math.sin(a) * diag);
+      }
+      ctx.stroke();
+      ctx.restore();
+
+      // 3) Pusula gülü
       ctx.save();
       ctx.translate(cx, cy);
-      ctx.strokeStyle = 'rgba(58,40,20,0.7)'; ctx.fillStyle = 'rgba(233,220,184,0.55)'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(0, 0, R * 0.78, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      ctx.beginPath(); ctx.arc(0, 0, R * 0.7, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = 'rgba(58,40,20,0.7)'; ctx.fillStyle = 'rgba(233,220,184,0.62)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(0, 0, R * 0.82, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, 0, R * 0.72, 0, Math.PI * 2); ctx.stroke();
+      for (let i = 0; i < 32; i++) {
+        const a = (i / 32) * Math.PI * 2;
+        ctx.beginPath(); ctx.moveTo(Math.cos(a) * R * 0.72, Math.sin(a) * R * 0.72);
+        ctx.lineTo(Math.cos(a) * R * 0.82, Math.sin(a) * R * 0.82); ctx.stroke();
+      }
       for (let i = 0; i < 16; i++) {
         const a = (i / 16) * Math.PI * 2, long = i % 4 === 0, mid = i % 2 === 0;
         const r1 = long ? R : mid ? R * 0.62 : R * 0.45;
@@ -541,19 +597,42 @@
         ctx.fillStyle = long ? 'rgba(58,40,20,0.85)' : 'rgba(150,100,50,0.7)';
         ctx.fill(); ctx.stroke();
       }
-      ctx.fillStyle = 'rgba(58,40,20,0.9)';
-      ctx.font = `bold 34px ${FONT_SC}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('K', 0, -R - 22);
+      ctx.beginPath(); ctx.arc(0, 0, R * 0.1, 0, Math.PI * 2); ctx.fillStyle = '#d4b362'; ctx.fill(); ctx.stroke();
+      ctx.fillStyle = 'rgba(58,40,20,0.9)'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = `bold 34px ${FONT_SC}`; ctx.fillText('K', 0, -R - 22);
+      ctx.font = `bold 20px ${FONT_SC}`;
+      ctx.fillText('G', 0, R + 18); ctx.fillText('D', R + 18, 0); ctx.fillText('B', -R - 18, 0);
       ctx.restore();
-      // kartuş
+
+      // 4) Harita kartuşu (harita tipi ve devlet sayısı dinamik)
+      const tInfo = G.MapGen && G.MapGen.TYPES && G.MapGen.TYPES.find((t) => t.key === m.mapType);
+      const title = m.mapType === 'kita' || !tInfo ? 'Kadîm Kıta' : tInfo.name;
+      const sub = g.countries.length === 9 ? 'Dokuz Devletin Haritası' : `${g.countries.length} Devletin Haritası`;
       ctx.save();
       ctx.translate(m.W - 420, 205);
-      ctx.fillStyle = 'rgba(236,224,190,0.85)'; ctx.strokeStyle = 'rgba(58,40,20,0.8)'; ctx.lineWidth = 3;
+      ctx.fillStyle = 'rgba(236,224,190,0.88)'; ctx.strokeStyle = 'rgba(58,40,20,0.82)'; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.moveTo(-230, -60); ctx.lineTo(230, -60); ctx.quadraticCurveTo(260, 0, 230, 60); ctx.lineTo(-230, 60); ctx.quadraticCurveTo(-260, 0, -230, -60); ctx.fill(); ctx.stroke();
       ctx.lineWidth = 1.2; ctx.beginPath(); ctx.rect(-215, -47, 430, 94); ctx.stroke();
       ctx.fillStyle = INK; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.font = `46px ${FONT_SC}`; ctx.fillText('Kadîm Kıta', 0, -8);
-      ctx.font = `italic 22px ${FONT}`; ctx.fillText('Dokuz Devletin Haritası', 0, 30);
+      ctx.font = `44px ${FONT_SC}`; ctx.fillText(title, 0, -8);
+      ctx.font = `italic 22px ${FONT}`; ctx.fillText(sub, 0, 30);
+      ctx.restore();
+
+      // 5) Menzil ölçeği çubuğu (sağ alt deniz köşesi)
+      ctx.save();
+      ctx.translate(m.W - 350, m.H - 135);
+      ctx.fillStyle = 'rgba(236,224,190,0.78)'; ctx.strokeStyle = 'rgba(58,40,20,0.68)'; ctx.lineWidth = 1.6;
+      ctx.fillRect(-130, -26, 260, 56); ctx.strokeRect(-130, -26, 260, 56);
+      ctx.fillStyle = INK; ctx.font = `italic 15px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('Menzil Ölçeği', 0, -14);
+      const sw = 55;
+      for (let i = 0; i < 4; i++) {
+        ctx.fillStyle = i % 2 === 0 ? 'rgba(58,40,20,0.84)' : '#efe2bc';
+        ctx.fillRect(-110 + i * sw, -2, sw, 8);
+        ctx.strokeStyle = INK; ctx.lineWidth = 1; ctx.strokeRect(-110 + i * sw, -2, sw, 8);
+      }
+      ctx.fillStyle = INK; ctx.font = `bold 13px ${FONT}`;
+      ctx.fillText('0', -110, 18); ctx.fillText('100', 0, 18); ctx.fillText('200 Fersah', 102, 18);
       ctx.restore();
     }
 
@@ -657,7 +736,7 @@
         const city = visible[i];
         const [sx, sy] = this.toScreen(city.x, city.y);
         const isCap = capitals.has(city.id);
-        if (isCap) this.star(ctx, sx, sy - 24 * s, 11 * s, '#f1c94f');
+        if (isCap) ctx.drawImage(this.capSprite(city.id === g.player.capital), sx - 13 * s, sy - 37 * s, 26 * s, 26 * s);
         const nb = city.building.length, cnt = city.factories + nb + (city.cityDef ? 1 : 0) + (city.airDef ? 1 : 0);
         if (cnt > 0) {
           const x0 = sx - (cnt * w) / 2 + w / 2, iy = sy + 24 * s;
@@ -699,24 +778,61 @@
       ctx.restore();
     }
 
-    icon(ctx, kind, x, y, s) {
-      ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
-      ctx.lineWidth = 1; ctx.strokeStyle = INK;
-      if (kind === 'f') {
-        ctx.fillStyle = '#4a3420';
-        ctx.beginPath(); ctx.moveTo(-5, 4); ctx.lineTo(-5, -1); ctx.lineTo(-2, -3); ctx.lineTo(-2, -1); ctx.lineTo(1, -3); ctx.lineTo(1, -1);
-        ctx.lineTo(3, -1); ctx.lineTo(3, -6); ctx.lineTo(5, -6); ctx.lineTo(5, 4); ctx.closePath(); ctx.fill();
-      } else if (kind === 'd') {
-        ctx.fillStyle = '#6d7f96';
-        ctx.beginPath(); ctx.moveTo(0, -6); ctx.lineTo(5, -4); ctx.lineTo(4, 2); ctx.lineTo(0, 5); ctx.lineTo(-4, 2); ctx.lineTo(-5, -4); ctx.closePath(); ctx.fill(); ctx.stroke();
-      } else if (kind === 'a') {
-        ctx.fillStyle = '#2f6d6a';
-        ctx.beginPath(); ctx.moveTo(-4, 5); ctx.lineTo(0, -1); ctx.lineTo(4, 5); ctx.closePath(); ctx.fill();
-        ctx.strokeStyle = '#2f6d6a'; ctx.lineWidth = 1.4;
-        ctx.beginPath(); ctx.arc(0, -1, 4, -Math.PI * 0.85, -Math.PI * 0.15); ctx.stroke();
-        ctx.beginPath(); ctx.arc(0, -1, 7, -Math.PI * 0.8, -Math.PI * 0.2); ctx.stroke();
+    // Önbellekli başkent yıldızı (oyuncu başkentine ekstra altın hale)
+    capSprite(isPlayer) {
+      const cache = this._capSpr || (this._capSpr = {});
+      const key = isPlayer ? 1 : 0;
+      if (cache[key]) return cache[key];
+      const sz = 52, c = document.createElement('canvas');
+      c.width = c.height = sz;
+      const x = c.getContext('2d'), cx = sz / 2, cy = sz / 2, r = isPlayer ? 22 : 21;
+      if (isPlayer) {
+        const gr = x.createRadialGradient(cx, cy, 4, cx, cy, 26);
+        gr.addColorStop(0, 'rgba(255,224,96,0.55)');
+        gr.addColorStop(1, 'rgba(255,224,96,0)');
+        x.fillStyle = gr; x.beginPath(); x.arc(cx, cy, 26, 0, Math.PI * 2); x.fill();
       }
-      ctx.restore();
+      x.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const a = -Math.PI / 2 + (i * Math.PI) / 5, rr = i % 2 ? r * 0.45 : r;
+        i ? x.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr) : x.moveTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr);
+      }
+      x.closePath();
+      x.fillStyle = isPlayer ? '#ffd95e' : '#f1c94f'; x.fill();
+      x.lineWidth = 3; x.strokeStyle = INK; x.stroke();
+      cache[key] = c;
+      return c;
+    }
+
+    icon(ctx, kind, x, y, s) {
+      const cache = this._icSpr || (this._icSpr = {});
+      let sp = cache[kind];
+      if (!sp) {
+        sp = document.createElement('canvas');
+        sp.width = sp.height = 40;
+        const c = sp.getContext('2d');
+        c.translate(20, 20); c.scale(2, 2);
+        c.lineWidth = 1; c.strokeStyle = INK;
+        if (kind === 'f') {
+          c.fillStyle = '#4a3420';
+          c.beginPath(); c.moveTo(-5, 4); c.lineTo(-5, -1); c.lineTo(-2, -3); c.lineTo(-2, -1); c.lineTo(1, -3); c.lineTo(1, -1);
+          c.lineTo(3, -1); c.lineTo(3, -6); c.lineTo(5, -6); c.lineTo(5, 4); c.closePath(); c.fill();
+          c.strokeStyle = 'rgba(241,226,184,0.45)'; c.lineWidth = 0.6; c.stroke();
+        } else if (kind === 'd') {
+          c.fillStyle = '#6d7f96';
+          c.beginPath(); c.moveTo(0, -6); c.lineTo(5, -4); c.lineTo(4, 2); c.lineTo(0, 5); c.lineTo(-4, 2); c.lineTo(-5, -4); c.closePath(); c.fill(); c.stroke();
+          c.strokeStyle = 'rgba(241,226,184,0.5)'; c.lineWidth = 0.7;
+          c.beginPath(); c.moveTo(0, -4); c.lineTo(0, 3); c.stroke();
+        } else if (kind === 'a') {
+          c.fillStyle = '#2f6d6a';
+          c.beginPath(); c.moveTo(-4, 5); c.lineTo(0, -1); c.lineTo(4, 5); c.closePath(); c.fill();
+          c.strokeStyle = '#2f6d6a'; c.lineWidth = 1.4;
+          c.beginPath(); c.arc(0, -1, 4, -Math.PI * 0.85, -Math.PI * 0.15); c.stroke();
+          c.beginPath(); c.arc(0, -1, 7, -Math.PI * 0.8, -Math.PI * 0.2); c.stroke();
+        }
+        cache[kind] = sp;
+      }
+      ctx.drawImage(sp, x - 10 * s, y - 10 * s, 20 * s, 20 * s);
     }
 
     // Fabrikaya bağlı olmayan (zayıf) birliklerin üstündeki uyarı işareti: sarı üçgen + ünlem
@@ -921,7 +1037,15 @@
           const pulse = 0.5 + 0.5 * Math.sin(now / 120);
           ctx.beginPath(); ctx.arc(dx, dy, (22 + 6 * pulse) * s, 0, Math.PI * 2);
           ctx.strokeStyle = `rgba(190,30,20,${0.5 + 0.4 * pulse})`; ctx.lineWidth = 3; ctx.stroke();
-          this.swords(ctx, (sx + dx) / 2, (sy + dy) / 2, s);
+          const mx = (sx + dx) / 2, my = (sy + dy) / 2, bt = now / 210;
+          ctx.fillStyle = 'rgba(255,216,104,0.88)';
+          ctx.beginPath();
+          for (let k = 0; k < 3; k++) {
+            const a = bt + k * 2.094, rx = mx + Math.cos(a) * 16 * s, ry = my + Math.sin(a) * 12 * s;
+            ctx.moveTo(rx + 2.2 * s, ry); ctx.arc(rx, ry, 2.2 * s, 0, Math.PI * 2);
+          }
+          ctx.fill();
+          this.swords(ctx, mx, my, s);
           (this._mvPcts || (this._mvPcts = [])).push(dx, dy + 36 * s, '%' + Math.round(100 * (m.prog || 0)));
         }
         if (m.kind === 'para') {
@@ -1056,6 +1180,11 @@
             this.sparkle(ctx, sx, sy, t, s);
             this.floatText(ctx, sx, sy - 30 * s, f.text, t, '#2e7034');
             break;
+          case 'capture':
+            this.fxRing(ctx, sx, sy, t, [226, 178, 56], 10 * s, 54 * s);
+            this.fxRing(ctx, sx, sy, Math.max(0, t - 0.16) / 0.84, [241, 201, 79], 8 * s, 38 * s);
+            if (mine) this.sparkle(ctx, sx, sy, t, s);
+            break;
           case 'depart':
             if (!mine) break;
             this.floatText(ctx, sx, sy - 30 * s, f.text, t, '#2e7034', 0.8);
@@ -1158,6 +1287,14 @@
         const t = g.cities[u.move.to];
         ctx.fillStyle = 'rgba(200,20,10,0.9)';
         ctx.beginPath(); ctx.arc(ox + t.x * sc, oy + t.y * sc, 2.5 * this.dpr, 0, Math.PI * 2); ctx.fill();
+      }
+      const sel = this.ui && this.ui.selectedUnit && this.ui.selectedUnit();
+      if (sel) {
+        const scCity = g.cities[sel.city];
+        if (scCity) {
+          ctx.strokeStyle = '#ffd95e'; ctx.lineWidth = 1.6 * this.dpr;
+          ctx.beginPath(); ctx.arc(ox + scCity.x * sc, oy + scCity.y * sc, 4.5 * this.dpr, 0, Math.PI * 2); ctx.stroke();
+        }
       }
       const [x0, y0] = this.toWorld(0, 0), [x1, y1] = this.toWorld(this.vw, this.vh);
       ctx.strokeStyle = '#fff6d8'; ctx.lineWidth = 1.5 * this.dpr;

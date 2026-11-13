@@ -63,6 +63,7 @@
       this.live = [];
       this.inbox = [];
       this.barKey = '';
+      this.speed = 1;
       this.$ = (id) => document.getElementById(id);
       this.build();
       game.on((ev) => this.onEvent(ev));
@@ -106,12 +107,49 @@
         if (e.target.id === 'amtRange') { this.amountK = +e.target.value; this.updateBarLive(); }
       });
       this.$('inbox').addEventListener('click', (e) => {
+        const fc = e.target.closest('button[data-focus-from]');
+        if (fc) {
+          const c = g.countries[+fc.dataset.focusFrom];
+          if (c && c.capital >= 0 && this.renderer) {
+            const k = g.cities[c.capital];
+            if (this.renderer.focus) this.renderer.focus(k.x, k.y);
+            else { this.renderer.cam.x = k.x; this.renderer.cam.y = k.y; }
+          }
+          return;
+        }
         const b = e.target.closest('button[data-pid]');
         if (!b) return;
         const r = g.cmdRespond(g.playerId, +b.dataset.pid, b.dataset.ok === '1');
         if (r.err) this.toast(r.err, 'bad');
         this.renderInbox();
       });
+      const spdBox = this.$('spdBox');
+      if (spdBox) {
+        spdBox.classList.toggle('hidden', !!g.mp);
+        spdBox.addEventListener('click', (e) => {
+          const b = e.target.closest('button[data-spd]');
+          if (b) this.setSpeed(+b.dataset.spd);
+        });
+      }
+      const TOP_MENU = { mil: 'military', shop: 'shop', all: 'alliances' };
+      const topbar = this.$('topbar');
+      if (topbar) topbar.addEventListener('click', (e) => {
+        const lk = e.target.closest('[data-top]');
+        if (lk && TOP_MENU[lk.dataset.top]) { this.openMenu(TOP_MENU[lk.dataset.top]); return; }
+        if (e.target.closest('#tbWar')) {
+          const w = g.enemiesOf(p.id).find((x) => !g.isRebel(x));
+          if (w !== undefined) this.diploSel = w;
+          if (this.menu !== 'diplomacy') this.openMenu('diplomacy');
+          else { this.lastHtml = ''; this.renderPanel(); }
+        }
+      });
+    }
+
+    setSpeed(sp) {
+      if (this.game.mp) return;
+      this.speed = sp === 2 || sp === 4 ? sp : 1;
+      const box = this.$('spdBox');
+      if (box) box.querySelectorAll('button[data-spd]').forEach((b) => b.classList.toggle('on', +b.dataset.spd === this.speed));
     }
 
     // Çevrimiçi kurulum: fabrikasını kuran oyuncu diğerlerini bekler (süre dolunca host başkentlere otomatik kurar)
@@ -194,7 +232,7 @@
         const p = g.proposals.find((x) => x.id === id);
         const f = g.countries[p.from];
         return `<div class="letter frame">
-          <div class="lh"><span class="sw" style="background:${f.color}"></span><b>${esc(f.name)}</b> · ${esc(G.PROPOSAL_NAMES[p.type])}</div>
+          <div class="lh"><span class="sw" style="background:${f.color}"></span><b>${esc(f.name)}</b> · ${esc(G.PROPOSAL_NAMES[p.type])}${f.alive && f.capital >= 0 ? `<button type="button" class="btn sm" data-focus-from="${f.id}" title="Ülkeyi haritada göster">◎</button>` : ''}</div>
           <p>${esc(g.describeProposal(p))}</p>
           <div class="lt"><i data-exp="${p.id}"></i></div>
           <div class="lb"><button class="btn ok" data-pid="${p.id}" data-ok="1">Kabul Et</button><button class="btn no" data-pid="${p.id}" data-ok="0">Reddet</button></div>
@@ -345,6 +383,16 @@
         this._txt('markInfo', `${this.marked.size} birlik · ${fmtK(t)}`);
       }
     }
+    setSplitPct(pct) {
+      const sel = this.selectedUnit();
+      if (!sel) return false;
+      const maxK = Math.max(1, Math.ceil(sel.troops / 1000));
+      this.amountK = pct >= 1 ? maxK : Math.max(1, Math.min(maxK, Math.round(maxK * pct)));
+      const r = this.$('amtRange');
+      if (r) r.value = this.amountK;
+      this.updateBarLive();
+      return true;
+    }
     onBarClick(e) {
       const b = e.target.closest('[data-bar]');
       if (!b) return;
@@ -356,16 +404,7 @@
         this.updateActionBar();
         if (t.done) t.done();
       }
-      else if (b.dataset.bar === 'pct') {
-        const sel = this.selectedUnit();
-        if (!sel) return;
-        const maxK = Math.max(1, Math.ceil(sel.troops / 1000));
-        const pct = +b.dataset.pct;
-        this.amountK = pct >= 1 ? maxK : Math.max(1, Math.min(maxK, Math.round(maxK * pct)));
-        const r = this.$('amtRange');
-        if (r) r.value = this.amountK;
-        this.updateBarLive();
-      }
+      else if (b.dataset.bar === 'pct') this.setSplitPct(+b.dataset.pct);
       else if (b.dataset.bar === 'army') {
         const r = g.cmdCreateArmy(g.playerId, [...this.marked], b.dataset.mode);
         if (r.err) { this.toast(r.err, 'bad'); return; }
@@ -384,7 +423,19 @@
       this._txt('tbIncTxt', `+${g.incomeOf(p.id)}₺ / ${G.CFG.incomeInterval} sn`);
       this._txt('tbTroops', fmtK(g.totalTroops(p.id)) + (p.queue ? ` (+${p.queue}k)` : ''));
       this._txt('tbFac', String(f));
-      this._txt('tbCities', String(g.citiesOf(p.id).length));
+      const counts = this._cntBuf || (this._cntBuf = new Int16Array(12));
+      counts.fill(0);
+      for (let i = 0; i < g.cities.length; i++) {
+        const ow = g.cities[i].owner;
+        if (ow >= 0 && ow < 12) counts[ow]++;
+      }
+      const myCities = counts[p.id];
+      let rank = 1;
+      for (let i = 0; i < g.countries.length; i++) {
+        const c = g.countries[i];
+        if (c.alive && !c.isRebel && !c.absent && c.id !== p.id && (counts[c.id] > myCities || (counts[c.id] === myCities && c.id < p.id))) rank++;
+      }
+      this._txt('tbCities', `${myCities} (#${rank})`);
       this._txt('tbTime', fmtTime(g.time));
       const bl = p.blitzUntil - g.time;
       const blOn = bl > 0;
@@ -461,11 +512,23 @@
       if (c.building.length) struct.push(`🏗 ${c.building.length} fabrika inşaatta`);
       if (c.cityDef) struct.push('şehir savunması');
       if (c.airDef) struct.push('hava koruma');
+      const defM = g.defMult(c.owner, cityId);
+      if (defM > 1.005) struct.push(`🛡 ×${defM.toFixed(2)}`);
       const sel = this.selUnit !== null ? this.selectedUnit() : null;
       let actHint = '';
       if (sel && cityId !== sel.city) {
         if (g.friendly(sel.owner, c.owner)) actHint = '<div class="tt-hint ok">✓ Tıkla: destek / taşı</div>';
-        else if (g.hostile(sel.owner, c.owner) && g.cities[sel.city].neighbors.includes(cityId)) actHint = '<div class="tt-hint atk">⚔ Tıkla: saldır</div>';
+        else if (g.hostile(sel.owner, c.owner) && g.cities[sel.city].neighbors.includes(cityId)) {
+          const send = Math.min(sel.troops, this.amountK * 1000);
+          const atkM = g.unitAtk(sel, c.owner);
+          const defT = units.reduce((sum, u) => sum + (g.friendly(u.owner, c.owner) ? u.troops : 0), 0);
+          if (defT <= 0) actHint = '<div class="tt-hint ok">⚔ Tıkla: saldır (boş şehir)</div>';
+          else {
+            const ratio = (send * atkM) / (defT * defM);
+            const tag = ratio >= 1.25 ? 'avantajlı' : ratio >= 0.85 ? 'denk' : 'riskli';
+            actHint = `<div class="tt-hint atk">⚔ Tıkla: saldır (${fmtK(send)} ×${atkM.toFixed(2)} vs ${fmtK(defT)} ×${defM.toFixed(2)} · ${tag})</div>`;
+          }
+        }
         else if (!g.hostile(sel.owner, c.owner) && !o.isRebel) actHint = '<div class="tt-hint">⚠ Saldırı için önce savaş ilan et</div>';
         else actHint = '<div class="tt-hint">✗ Sınır komşusu değil</div>';
       }
@@ -590,6 +653,9 @@
         .sort((a, b) => rank(a) - rank(b) || g.rel[me][b.id] - g.rel[me][a.id] || a.id - b.id);
       if (!others.some((c) => c.id === this.diploSel)) this.diploSel = others.length ? others[0].id : null;
       const nbrs = new Set(g.neighborsOfCountry(me));
+      const cnts = this._cntBuf || (this._cntBuf = new Int16Array(12));
+      cnts.fill(0);
+      for (let i = 0; i < g.cities.length; i++) { const ow = g.cities[i].owner; if (ow >= 0 && ow < 12) cnts[ow]++; }
       const human = (c) => (g.mp && c.isHuman ? '<i class="hm" title="Gerçek oyuncu">👤</i>' : '');
       const list = others.map((c) => {
         const st = c.alive ? this.relStatus(me, c.id) : { t: 'Yıkıldı', c: 'dead' };
@@ -597,7 +663,7 @@
         const sub = !c.alive ? 'yıkıldı' : st.c === 'war' ? '⚔ savaşta' : st.c === 'ally' ? '🤝 müttefik' : this.relWord(rv);
         const rBadge = c.alive ? `<small class="rl-s ${rv >= 25 ? 'pos' : rv <= -25 ? 'neg' : ''}">${rv > 0 ? '+' : ''}${rv}</small>` : '';
         return `<li data-act="dsel" data-id="${c.id}" tabindex="0" role="button" aria-pressed="${this.diploSel === c.id}" class="${this.diploSel === c.id ? 'sel' : ''} ${st.c}">${this.seal(c)}
-          <span class="nm"><b>${esc(c.name)}${human(c)}</b><small>${sub}${c.alive && nbrs.has(c.id) ? ' · komşu' : ''}</small></span>${rBadge}</li>`;
+          <span class="nm"><b>${esc(c.name)}${human(c)}</b><small>${sub}${c.alive ? ` · ${cnts[c.id]} şehir` : ''}${c.alive && nbrs.has(c.id) ? ' · komşu' : ''}</small></span>${rBadge}</li>`;
       }).join('');
       let info = '<div class="empty">Diplomasi kuracak ülke yok.</div>';
       const t = this.diploSel !== null ? g.countries[this.diploSel] : null;
@@ -612,7 +678,11 @@
           return `<button class="btn ${opts.cls || ''}" data-act="${act}" data-id="${id}" ${opts.dis ? 'disabled' : ''} title="${esc(opts.title || '')}">${label}</button>`;
         };
         const tags = [`<span class="chip ${st.c}">${st.t}</span>`];
-        if (t.alive) tags.push(`<span class="tag">${esc(g.ideo(id).name)}</span>`);
+        if (t.alive) {
+          const tDef = (1 + t.defLvl * G.CFG.upgradeStep) * g.ideo(id).def;
+          tags.push(`<span class="tag">${esc(g.ideo(id).name)}</span>`);
+          tags.push(`<span class="tag">⚔ ×${g.atkMult(id, me).toFixed(2)} · 🛡 ×${tDef.toFixed(2)}</span>`);
+        }
         if (al) tags.push(`<span class="tag al">⚑ ${esc(al.name)}</span>`);
         if (g.mp && t.isHuman) tags.push(`<span class="tag">👤 Oyuncu${t.isBot ? ' (bağlantı yok)' : ''}</span>`);
         if (t.alive && nbrs.has(id)) tags.push('<span class="tag">Sınır komşusu</span>');
@@ -637,6 +707,7 @@
             <div><span>Şehir</span><b>${this.L(() => String(cnt(id)()))}</b></div>
             <div><span>Asker</span><b>${this.L(() => fmtK(g.totalTroops(id)))}</b></div>
             <div><span>Fabrika</span><b>${this.L(() => String(g.factoriesOf(id)))}</b></div>
+            <div><span>Hazine</span><b>${this.L(() => fmtMoney(t.money))}</b></div>
           </div>`;
           const power = `<div class="dcard"><h5>Güç dengesi <small>— sen ⟷ ${esc(t.name)}</small></h5>
             ${vs('Asker', () => g.totalTroops(me), () => g.totalTroops(id), fmtK)}
@@ -721,7 +792,9 @@
               <div class="qbtns"><button class="btn round" data-act="q" data-dir="-1" ${P.queue <= 0 ? 'disabled' : ''} title="Sıradan 1k çıkar">−</button>
                 <button class="btn green" data-act="q" data-dir="1" data-n="1" ${P.money < tp ? 'disabled' : ''}>+1k</button>
                 <button class="btn green" data-act="q" data-dir="1" data-n="5" ${P.money < tp ? 'disabled' : ''}>+5k</button>
-                <button class="btn green" data-act="q" data-dir="1" data-n="10" ${P.money < tp ? 'disabled' : ''}>+10k</button></div>
+                <button class="btn green" data-act="q" data-dir="1" data-n="10" ${P.money < tp ? 'disabled' : ''}>+10k</button>
+                <button class="btn green" data-act="q" data-dir="1" data-n="max" ${P.money < tp ? 'disabled' : ''} title="Paranın yettiği kadar sıraya ekle">+Maks</button>
+                ${P.queue > 0 ? '<button class="btn sm" data-act="qclear" title="Tüm üretim sırasını temizle (ücret iade edilmez)">✕</button>' : ''}</div>
               <button class="tgl ${P.autoDist ? 'on' : ''}" data-act="autodist" role="switch" aria-checked="${!!P.autoDist}"
                 title="Açıkken üretilen askerler başkentte kalmaz; önce saldırı altındaki, sonra savaştığın ülkeye sınır olan, en az askeri olan şehre yürür.">
                 <span class="tgl-track"><i></i></span><span class="tgl-l">Sınırlara dağıt</span><span class="tgl-ar">»</span></button>
@@ -775,12 +848,15 @@
         .map((c) => ({ c, n: cityCount(c.id) }))
         .sort((a, b) => (b.c.alive - a.c.alive) || b.n - a.n || a.c.id - b.c.id);
       const maxN = Math.max(1, ...rows.map((r) => r.n));
+      const totN = Math.max(1, g.cities.length);
       const ranking = rows.map((r, i) => {
         const c = r.c, st = c.isPlayer ? { c: 'me' } : c.alive ? this.relStatus(me, c.id) : { c: 'dead' };
-        return `<li class="${st.c}"><span class="rk">${c.alive ? i + 1 : '☠'}</span>${this.seal(c, 'sm')}
+        const act = c.isPlayer ? '' : ` data-act="dopen" data-id="${c.id}" tabindex="0" role="button" title="${esc(c.name)} diplomasisini aç"`;
+        const pct = Math.round((r.n / totN) * 100);
+        return `<li class="${st.c}"${act}><span class="rk">${c.alive ? i + 1 : '☠'}</span>${this.seal(c, 'sm')}
           <span class="rk-n"><b>${esc(c.name)}${c.isPlayer ? ' <small>(sen)</small>' : ''}</b>
           <span class="rk-bar"><i style="width:${(r.n / maxN) * 100}%;background:${c.color}"></i></span></span>
-          <small class="rk-v">${c.alive ? `${r.n} şehir · ${this.L(() => fmtK(g.totalTroops(c.id)))}` : 'yıkıldı'}</small></li>`;
+          <small class="rk-v">${c.alive ? `${r.n} (%${pct}) · ${this.L(() => fmtK(g.totalTroops(c.id)))}` : 'yıkıldı'}</small></li>`;
       }).join('');
       const myAlId = g.countries[me].allianceId;
       const als = g.alliances.slice().sort((a, b) => (b.id === myAlId) - (a.id === myAlId)).map((al) => {
@@ -818,6 +894,7 @@
         { t: 'Savunma', ic: 'shield', cls: 'def', keys: ['cityDef', 'airDef'] },
       ];
       const count = (f) => { let n = 0; for (const c of g.cities) if (c.owner === me && f(c)) n++; return n; };
+      const hasFacSlot = g.cities.some((c) => c.owner === me && g.factorySlots(c) < g.factoryLimit(me));
       const card = (it, cls) => {
         const pr = g.price(me, it.key);
         let extra = '', dis = P.money < pr, note = '', badge = '';
@@ -839,12 +916,14 @@
         }
         const need = P.money < pr && !badge ? `<span class="need">${fmtMoney(Math.round((pr - P.money) * 100) / 100)} eksik</span>` : '';
         const label = it.target && it.target !== 'country' ? (it.key === 'missile' ? 'Hedef Seç' : 'Şehir Seç') : 'Satın Al';
+        const quickFac = it.key === 'factory' && !dis && hasFacSlot
+          ? '<button class="btn sm green" data-act="autobuyfac" title="En güvenli uygun şehre hemen fabrika kur">⚡ Hızlı Kur</button>' : '';
         return `<div class="sitem ${cls} ${dis ? 'dis' : ''}">
           <div class="si-top"><span class="si-ic">${icon(SHOP_ICON[it.key])}</span>
             <div class="si-t"><b>${it.name}</b>${badge ? `<span class="badge">${badge}</span>` : ''}</div>
             <span class="price">${fmtMoney(pr)}${pr !== G.PRICES[it.key] ? ` <s>${fmtMoney(G.PRICES[it.key])}</s>` : ''}</span></div>
           <p>${it.desc}</p>${note ? `<small class="si-note">${note}</small>` : ''}${extra}
-          <div class="si-f">${need}<button class="btn sm" data-act="buy" data-item="${it.key}" ${dis ? 'disabled' : ''}>${label}</button></div></div>`;
+          <div class="si-f">${need}${quickFac}<button class="btn sm" data-act="buy" data-item="${it.key}" ${dis ? 'disabled' : ''}>${label}</button></div></div>`;
       };
       const inc = g.incomeOf(me);
       const ideo = g.ideo(me);
@@ -867,6 +946,7 @@
       const res = (r, okMsg) => { if (r && r.err) this.toast(r.err, 'bad'); else if (okMsg) this.toast(okMsg, 'good'); this.lastHtml = ''; this.renderPanel(); };
       switch (b.dataset.act) {
         case 'dsel': this.diploSel = id; this.lastHtml = ''; this.renderPanel(); break;
+        case 'dopen': this.diploSel = id; this.openMenu('diplomacy'); break;
         case 'dfocus': {
           const c = g.countries[id];
           if (c && c.capital >= 0 && this.renderer) {
@@ -888,12 +968,20 @@
         case 'join': res(g.cmdJoinRequest(me, id), 'Katılma başvurusu tüm üyelere gönderildi.'); break;
         case 'leave': res(g.cmdLeaveAlliance(me), 'İttifaktan ayrıldın.'); break;
         case 'q': {
-          // +1k / +5k / +10k: parası yettiği kadar sıraya ekler
-          const n = Math.max(1, +b.dataset.n || 1), dir = +b.dataset.dir;
+          // +1k / +5k / +10k / +Maks: parası yettiği kadar sıraya ekler
+          const tp = g.price(me, 'troop');
+          const n = b.dataset.n === 'max' ? Math.max(1, Math.min(500, Math.floor(g.player.money / tp))) : Math.max(1, +b.dataset.n || 1);
+          const dir = +b.dataset.dir;
           let r = null, done = 0;
           for (let i = 0; i < n; i++) { r = g.cmdQueueTroops(me, dir); if (r.err) break; done++; }
-          if (done > 0 && n > 1 && r && r.err) this.toast(`Para yettiği kadar sıraya eklendi: +${done}k`, 'info');
+          if (done > 0 && b.dataset.n === 'max') this.toast(`+${done}k asker sıraya eklendi`, 'good');
+          else if (done > 0 && n > 1 && r && r.err) this.toast(`Para yettiği kadar sıraya eklendi: +${done}k`, 'info');
           res(done > 0 ? { ok: true } : r);
+          break;
+        }
+        case 'qclear': {
+          while (g.player.queue > 0) { const r = g.cmdQueueTroops(me, -1); if (r.err) break; }
+          res({ ok: true }, 'Üretim sırası temizlendi.');
           break;
         }
         case 'autodist': {
@@ -926,6 +1014,21 @@
           break;
         }
         case 'buy': this.buy(b.dataset.item); break;
+        case 'autobuyfac': {
+          const lim = g.factoryLimit(me);
+          const avail = g.cities.filter((c) => c.owner === me && g.factorySlots(c) < lim);
+          if (!avail.length) { this.toast('Fabrika kuracak boş şehrin yok', 'bad'); break; }
+          const cutIds = new Set(g.cutOffCities(me).map((c) => c.id));
+          const enemyNbr = (c) => { let k = 0; for (const n of c.neighbors) if (g.hostile(me, g.cities[n].owner)) k++; return k; };
+          avail.sort((a, b) => (cutIds.has(b.id) - cutIds.has(a.id))
+            || g.incomingAttacks(a.id).length - g.incomingAttacks(b.id).length
+            || enemyNbr(a) - enemyNbr(b)
+            || g.factorySlots(a) - g.factorySlots(b)
+            || a.id - b.id);
+          const best = avail[0];
+          res(g.cmdBuy(me, 'factory', { city: best.id }), `${best.name} şehrinde fabrika inşa ediliyor (${G.CFG.factoryBuildTime} sn).`);
+          break;
+        }
         case 'cutfocus': {
           const cut = g.cutOffCities(me);
           if (cut.length && this.renderer) {

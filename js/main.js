@@ -111,10 +111,14 @@
         <ul>${d.perks.map((p) => `<li>${p}</li>`).join('')}</ul>
         ${G.IDEO_UP && G.IDEO_UP[d.key] ? `<div class="ideo-sp"><span>Özel geliştirmeler</span>${G.IDEO_UP[d.key].map((x) => `<i title="${x.desc}">${x.name}</i>`).join('')}</div>` : ''}
       </button>`).join('');
+    try { const si = localStorage.getItem('hc_ideo'); if (si && G.IDEO[si]) startState.ideology = si; } catch (e) { /* yok */ }
+    const syncIdeo = () => ideoBox.querySelectorAll('.ideo').forEach((x) => { const on = x.dataset.k === startState.ideology; x.classList.toggle('on', on); x.setAttribute('aria-pressed', String(on)); });
+    syncIdeo();
     ideoBox.addEventListener('click', (e) => {
       const b = e.target.closest('.ideo'); if (!b) return;
       startState.ideology = b.dataset.k;
-      ideoBox.querySelectorAll('.ideo').forEach((x) => { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', String(x === b)); });
+      syncIdeo();
+      try { localStorage.setItem('hc_ideo', startState.ideology); } catch (err) { /* yok */ }
       validate();
     });
     // harita seçimi
@@ -143,6 +147,19 @@
     syncMode();
     $('nameIn').addEventListener('input', validate);
     $('nameIn').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !$('startBtn').disabled) start(null); });
+    const RAND_NAMES = [
+      'Altın Orda', 'Rumeli Beyliği', 'Kızıl Elma', 'Demir Taht', 'Anadolu Hanlığı',
+      'Boğaz İmparatorluğu', 'Tuna Despotluğu', 'Güneş Sultanlığı', 'Yıldız Kıralığı',
+      'Sancak Beyliği', 'Bozkır Kağanlığı', 'Hisar Cumhuriyeti'
+    ];
+    $('rndNameBtn').addEventListener('click', (e) => {
+      e.preventDefault();
+      const cur = $('nameIn').value.trim();
+      const pool = RAND_NAMES.filter((x) => x !== cur);
+      $('nameIn').value = pool[Math.floor(Math.random() * pool.length)];
+      validate();
+      $('nameIn').focus();
+    });
     $('startBtn').addEventListener('click', () => start(null));
     try { const n = localStorage.getItem('hc_name'); if (n) $('nameIn').value = n; } catch (e) { /* yok */ }
     // çevrimiçi
@@ -340,12 +357,14 @@
     let last = performance.now(), acc = 0, topT = 0, soundT = 0, moodT = 0, lastSim = performance.now();
     // Oyun ilerletme. İstemci oyunu ilerletmez (durum host'tan gelir), yalnızca zamanı akıcı yürütür.
     function simulate(now, cap) {
-      const dt = Math.min(cap, Math.max(0, (now - lastSim) / 1000));
+      const rawDt = Math.min(cap, Math.max(0, (now - lastSim) / 1000));
       lastSim = now;
-      if (game.mp === 'client') { net.advance(dt); return; }
+      if (game.mp === 'client') { net.advance(rawDt); return; }
       if (!game.mp && ui.paused) return; // tek oyunculu: oyun menüsü açıkken duraklat
-      acc += dt;
-      while (acc >= 0.05) { game.update(0.05); acc -= 0.05; }
+      const mult = !game.mp && ui.speed ? ui.speed : 1;
+      acc = Math.min(1, acc + rawDt * mult);
+      let steps = 0;
+      while (acc >= 0.05 && steps++ < 16) { game.update(0.05); acc -= 0.05; }
     }
     // Host'un sekmesi arka plandayken çizim durur ama oyun herkes için sürmeli
     if (game.mp === 'host') setInterval(() => { if (document.hidden) simulate(performance.now(), 1.5); }, 250);
@@ -420,6 +439,15 @@
       if (e.code === 'Digit2') ui.openMenu('military');
       if (e.code === 'Digit3') ui.openMenu('alliances');
       if (e.code === 'Digit4') ui.openMenu('shop');
+      if (e.code === 'Period' && !game.mp && !ui.dialogOpen()) {
+        const next = ui.speed === 1 ? 2 : ui.speed === 2 ? 4 : 1;
+        ui.setSpeed(next);
+        e.preventDefault();
+      }
+      if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+        const sp = { KeyZ: 0.25, KeyX: 0.5, KeyC: 0.75, KeyV: 1 }[e.code];
+        if (sp && ui.setSplitPct(sp)) e.preventDefault();
+      }
       if (e.code === 'Space' && game.player.capital >= 0) { const c = game.cities[game.player.capital]; renderer.focus(c.x, c.y); e.preventDefault(); }
     });
     window.addEventListener('keyup', (e) => { if (keyMap[e.code]) keys[keyMap[e.code]] = false; });

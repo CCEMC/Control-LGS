@@ -30,10 +30,15 @@
         <span class="lbl">Hazine</span><b id="tbMoney"></b>
         <div class="incbar"><i id="tbInc"></i></div><small id="tbIncTxt"></small>
       </div>
-      <div class="tb-stat" title="Toplam asker (üretim kuyruğu)"><span class="lbl">Asker</span><b id="tbTroops"></b></div>
-      <div class="tb-stat" title="Fabrika sayısı"><span class="lbl">Fabrika</span><b id="tbFac"></b></div>
-      <div class="tb-stat tb-opt" title="Şehir sayısı"><span class="lbl">Şehir</span><b id="tbCities"></b></div>
+      <div class="tb-stat tb-link" id="tbTroopsBox" data-top="mil" title="Toplam asker (üretim kuyruğu) — Askerî panel"><span class="lbl">Asker</span><b id="tbTroops"></b></div>
+      <div class="tb-stat tb-link" id="tbFacBox" data-top="shop" title="Fabrika sayısı — Yatırım paneli"><span class="lbl">Fabrika</span><b id="tbFac"></b></div>
+      <div class="tb-stat tb-opt tb-link" id="tbCitiesBox" data-top="all" title="Şehir sayısı ve sıralama — İttifaklar"><span class="lbl">Şehir</span><b id="tbCities"></b></div>
       <div class="tb-stat tb-opt" title="Oyun süresi"><span class="lbl">Süre</span><b id="tbTime"></b></div>
+      <div id="spdBox" class="spd-box" title="Tek oyunculu oyun hızı (kısayol: .)">
+        <button type="button" data-spd="1" class="on">1×</button>
+        <button type="button" data-spd="2">2×</button>
+        <button type="button" data-spd="4">4×</button>
+      </div>
       <div class="tb-flag blitz hidden" id="tbBlitz"></div>
       <div class="tb-flag war hidden" id="tbWar"></div>
       <div class="tb-flag net hidden" id="tbNet"></div>
@@ -82,9 +87,12 @@
         <div class="or">ya da yeni oyun</div>
       </div>
 
-      <label class="field">
+      <label class="field" for="nameIn">
         <span>Hükümdarlığının adı</span>
-        <input id="nameIn" maxlength="22" placeholder="ör. Kaan İmparatorluğu" autocomplete="off">
+        <div class="name-row">
+          <input id="nameIn" maxlength="22" placeholder="ör. Kaan İmparatorluğu" autocomplete="off">
+          <button type="button" id="rndNameBtn" class="btn sm" title="Rastgele isim öner">🎲</button>
+        </div>
       </label>
 
       <div class="field">
