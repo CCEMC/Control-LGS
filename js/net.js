@@ -5,7 +5,7 @@
 (function () {
   'use strict';
   const G = window.G;
-  const BUILD = 'clgs-v32'; // host ve istemci aynı sürümü çalıştırmalı (harita aynı tohumdan aynı üretilsin)
+  const BUILD = 'clgs-v33'; // host ve istemci aynı sürümü çalıştırmalı (harita aynı tohumdan aynı üretilsin)
   const PROTO = 1;
   const PREFIX = 'control-lgs-';
   const ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
