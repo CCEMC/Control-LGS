@@ -91,7 +91,11 @@ input, select { -webkit-user-select: text; user-select: text; }
   content: '✓'; position: absolute; top: 5px; right: 6px; width: 18px; height: 18px; line-height: 18px;
   border-radius: 50%; background: var(--gold); color: #fffaf0; font-size: 11px; font-weight: bold; box-shadow: 0 1px 2px rgba(0,0,0,.25);
 }
-#ideoCards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+#ideoCards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+/* ideoloji mühürleri: her rejimin kendi rengi */
+.ideo[data-k="demokrasi"] .ideo-seal { background: radial-gradient(circle at 35% 30%, #4f78a8, #1f3f66); }
+.ideo[data-k="monarsi"] .ideo-seal { background: radial-gradient(circle at 35% 30%, #c79a3a, #7a5410); }
+.ideo[data-k="fasizm"] .ideo-seal { background: radial-gradient(circle at 35% 30%, #5a5650, #1d1b19); }
 .ideo b { display: block; font-family: var(--font-sc); font-size: 19px; margin: 4px 0; }
 .ideo ul { margin: 0; padding: 0; list-style: none; font-size: 13.5px; line-height: 1.45; }
 .ideo li::before { content: '❧ '; color: var(--ink3); }

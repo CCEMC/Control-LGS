@@ -37,6 +37,9 @@
       perks: ['+%20 savunma', 'Savaş ilan hakkı %50 daha ucuz', '75k asker ile başlar'] },
     monarsi: { key: 'monarsi', name: 'Monarşi', troops: 85000, price: 1, atk: 1.1, def: 1, war: 1, factories: 3, rebelAtk: 1,
       perks: ['+%10 saldırı', '3 fabrika ile başlar', '85k asker ile başlar'] },
+    // Faşizm: saldırı odaklı militarist rejim; savunması zayıf, halkı savaşa daha geç yorulur (weary: yorgunluk artış çarpanı)
+    fasizm: { key: 'fasizm', name: 'Faşizm', troops: 80000, price: 1, atk: 1.15, def: 0.9, war: 1, factories: 2, rebelAtk: 1, weary: 0.7,
+      perks: ['+%15 saldırı, −%10 savunma', 'Savaş yorgunluğu %30 yavaş artar', '80k asker ile başlar'] },
   };
 
   const PRICES = { warRight: 5, alliance: 5, leave: 5, upgrade: 5, troop: 1, blitz: 5, cityDef: 5, factory: 12, factoryLimit: 5,
@@ -59,6 +62,11 @@
       { key: 'cavalry', name: 'Şövalye Süvarisi', desc: 'İşgal ve yürüyüş +%15 hızlı' },
       { key: 'royal', name: 'Kraliyet Muhafızları', desc: 'Başkent savunması +%25' },
       { key: 'tribute', name: 'Haraç', desc: 'Ele geçirilen her şehirden +1₺ ganimet' },
+    ],
+    fasizm: [
+      { key: 'propaganda', name: 'Propaganda', desc: 'Savaş yorgunluğu %15 daha yavaş artar' },
+      { key: 'mobil', name: 'Seferberlik', desc: 'Asker bakımı %15 ucuz' },
+      { key: 'storm', name: 'Yıldırım Doktrini', desc: 'Blitzkrieg %25 daha uzun sürer' },
     ],
   };
 
@@ -125,7 +133,7 @@
           isPlayer: k === playerId, isHuman: !!human, isBot: !isRebel && !absent && !human, isRebel, absent,
           pal, color: U.hsl(pal.h, pal.s, pal.l), dark: U.hsl(pal.h, Math.min(80, pal.s + 10), Math.max(14, pal.l - 30)),
           light: U.hsl(pal.h, pal.s, Math.min(90, pal.l + 18)),
-          ideology: isRebel || absent ? null : human ? (IDEO[human.ideology] ? human.ideology : 'demokrasi') : ideoKeys[Math.floor(this.rnd() * 3)],
+          ideology: isRebel || absent ? null : human ? (IDEO[human.ideology] ? human.ideology : 'demokrasi') : ideoKeys[Math.floor(this.rnd() * ideoKeys.length)],
           alive: !isRebel && !absent, money: isRebel || absent ? 0 : CFG.startMoney, incomeTimer: 0, limitBuys: 0, atkLvl: 0, defLvl: 0, blitzUntil: 0, ideoUp: {}, autoDist: false,
           capital: isRebel || absent ? -1 : this.map.capitals[k], queue: 0, prodTimer: 0, warRights: {}, allianceId: null,
           setupDone: false, bot: { eco: 1 + this.rnd() * 2, mil: 1 + this.rnd(), dip: 4 + this.rnd() * 4 },
@@ -211,8 +219,13 @@
     upkeepOf(cid, extra) {
       if (this.isRebel(cid)) return 0;
       const ex = this.totalTroops(cid) + (extra || 0) - this.upkeepFree(cid);
-      return ex > 0 ? Math.round((ex / CFG.upkeepPer) * 100) / 100 : 0;
+      const disc = 1 - 0.15 * this.iu(cid, 'mobil'); // Faşizm: Seferberlik
+      return ex > 0 ? Math.round((ex / CFG.upkeepPer) * disc * 100) / 100 : 0;
     }
+    // savaş yorgunluğunun artış hızı çarpanı (Faşizm %30 yavaş; Propaganda seviye başına %15 daha yavaş)
+    wearyMult(cid) { return (this.ideo(cid).weary || 1) * (1 - 0.15 * this.iu(cid, 'propaganda')); }
+    // blitzkrieg süresi (Faşizm: Yıldırım Doktrini seviye başına +%25)
+    blitzTime(cid) { return CFG.blitzDuration * (1 + 0.25 * this.iu(cid, 'storm')); }
     netIncome(cid) { return Math.round((this.incomeOf(cid) - this.upkeepOf(cid)) * 100) / 100; }
     // isyancılar dışındaki savaş sayısı
     warFoes(cid) { let n = 0; for (const w of this.wars.values()) if ((w.a === cid && !this.isRebel(w.b)) || (w.b === cid && !this.isRebel(w.a))) n++; return n; }
@@ -1009,8 +1022,8 @@
       switch (item) {
         case 'blitz':
           if (!this.pay(cid, pr)) return fail('Yetersiz para');
-          c.blitzUntil = Math.max(this.time, c.blitzUntil) + CFG.blitzDuration;
-          this.say(cid, 'Blitzkrieg aktif: 2 dakika boyunca +%35 saldırı!', 'good');
+          c.blitzUntil = Math.max(this.time, c.blitzUntil) + this.blitzTime(cid);
+          this.say(cid, `Blitzkrieg aktif: ${String(Math.round((this.blitzTime(cid) / 60) * 10) / 10).replace('.', ',')} dakika boyunca +%${Math.round(CFG.blitzBonus * 100)} saldırı!`, 'good');
           return { ok: true };
         case 'cityDef':
           if (!city || city.owner !== cid) return fail('Kendi şehrini seçmelisin');
@@ -1378,7 +1391,7 @@
         if (!c.alive || c.isRebel) continue;
         // savaş yorgunluğu: savaşta artar (her ek cephe %50 daha hızlı), barışta yavaşça geçer
         const foes = this.warFoes(c.id), w0 = c.weary || 0;
-        const w = foes ? w0 + CFG.wearyWarRate * (1 + 0.5 * (foes - 1)) * dt : w0 - CFG.wearyPeaceRate * dt;
+        const w = foes ? w0 + CFG.wearyWarRate * (1 + 0.5 * (foes - 1)) * this.wearyMult(c.id) * dt : w0 - CFG.wearyPeaceRate * dt;
         c.weary = w < 0 ? 0 : w > 1 ? 1 : w;
         if (c.isHuman && c.weary !== w0) this.wearyNotice(c, w0);
         c.incomeTimer += dt;

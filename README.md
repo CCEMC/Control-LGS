@@ -127,6 +127,12 @@ fiyatı seviye başına artar (6 → 9 → 12₺, Komünizm'de %10 ucuz). Etkile
 | Monarşi | Şövalye Süvarisi | İşgal ve yürüyüş +%15 hızlı |
 | Monarşi | Kraliyet Muhafızları | Başkent savunması +%25 |
 | Monarşi | Haraç | Ele geçirilen her şehirden +1₺ ganimet |
+| Faşizm | Propaganda | Savaş yorgunluğu %15 daha yavaş artar |
+| Faşizm | Seferberlik | Asker bakımı %15 ucuz |
+| Faşizm | Yıldırım Doktrini | Blitzkrieg %25 daha uzun sürer |
+
+**Faşizm** (dördüncü ideoloji): +%15 saldırı ama −%10 savunma, savaş yorgunluğu %30 yavaş artar, 80k asker ve 2 fabrikayla başlar.
+Saldırıya dayalı, uzun savaşları kaldırabilen ama savunmada kırılgan bir oyun tarzı. Botlar da bu ideolojiyi seçebilir.
 
 ## Savaş kuralları (kısaca)
 

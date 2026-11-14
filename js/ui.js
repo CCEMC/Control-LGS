@@ -877,7 +877,7 @@
       const signed = (n) => (n >= 0 ? '+' : '−') + fmtMoney(Math.abs(n));
       const wyText = () => {
         const w = P.weary || 0, cut = Math.round(g.wearyCut(me) * 100), foes = g.warFoes(me);
-        if (w < 0.01 && !foes) return `Barıştasın. Savaşta dakikada ~%${Math.round(CF.wearyWarRate * 6000)} artar (her ek cephe daha hızlı); şehir kaybetmek arttırır, şehir almak azaltır.`;
+        if (w < 0.01 && !foes) return `Barıştasın. Savaşta dakikada ~%${Math.round(CF.wearyWarRate * 6000 * g.wearyMult(me))} artar (her ek cephe daha hızlı); şehir kaybetmek arttırır, şehir almak azaltır.`;
         return `Gelir ve asker üretimi −%${cut}. ${foes ? (foes > 1 ? `${foes} cephede savaş: hızla artıyor.` : 'Savaş sürdükçe artıyor; barış yaparsan geçer.') : 'Barıştasın: yavaş yavaş geçiyor.'}`;
       };
       const upkCard = `<div class="mcard upk"><div class="mc-h">${icon('coin')}<b>Bakım ve moral</b><span class="mc-r">her ${CF.incomeInterval} sn</span></div>
@@ -993,7 +993,10 @@
         switch (it.key) {
           case 'factory': { const pend = g.factoriesPending(me); note = `${g.factoriesOf(me)} fabrikan var${pend ? ` (+${pend} inşaatta)` : ''} · şehir başına en fazla ${g.factoryLimit(me)}`; break; }
           case 'factoryLimit': note = `Şu an ${g.factoryLimit(me)} · ${P.limitBuys}/${G.CFG.maxLimitBuys} alındı`; if (P.limitBuys >= G.CFG.maxLimitBuys) { dis = true; badge = 'Tamamlandı'; } break;
-          case 'blitz': if (P.blitzUntil > g.time) { badge = 'Aktif'; note = `${this.L(() => fmtTime(Math.max(0, P.blitzUntil - g.time)))} kaldı · alırsan süre uzar`; } break;
+          case 'blitz':
+            if (P.blitzUntil > g.time) { badge = 'Aktif'; note = `${this.L(() => fmtTime(Math.max(0, P.blitzUntil - g.time)))} kaldı · alırsan süre uzar`; }
+            else if (g.iu(me, 'storm')) note = `Yıldırım Doktrini: ${fmtTime(g.blitzTime(me))} sürer`;
+            break;
           case 'plane': note = `Başkentinde ${this.L(() => fmtK(P.capital >= 0 ? g.troopsAt(P.capital, me) : 0))} asker var`; break;
           case 'missile': note = 'Başkentlere atılamaz · hava koruma %15 ihtimalle düşürür'; break;
           case 'rebellion': {
