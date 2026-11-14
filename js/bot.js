@@ -114,8 +114,9 @@
       for (const n of here.neighbors) {
         const t = game.cities[n];
         if (!game.hostile(cid, t.owner) || attacked.has(n)) continue;
+        // savunmaya arazi (dağ/tepe/orman) dahil; saldırıya yükseklik avantajı dahil
         const effD = game.effDefense(t, game.defendersOf(n, cid));
-        const effA = avail * game.unitAtk(u, t.owner);
+        const effA = avail * game.battleAtk(u, u.city, t);
         const margin = effA - effD * 1.18 - 1500;
         if (margin <= 0) continue;
         const isCap = game.countries.some((k) => k.capital === n && k.alive);

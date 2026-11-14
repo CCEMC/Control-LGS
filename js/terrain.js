@@ -1,4 +1,4 @@
-// Uydu görünümlü arazi (yalnızca görsel; oyun kurallarını etkilemez).
+// Arazi: uydu görünümü ve oyun kurallarındaki yer şekilleri (ova, orman, tepe, dağ, çöl).
 // Haritanın tohumundan belirleyici olarak üretilir: kıyıdan içeri yükselen arazi, dağ sıraları ve karlı zirveler,
 // nem haritasına göre orman / çayır / bozkır / çöl, kumsallar, kuzeybatıdan ışıklı kabartma gölgesi,
 // sığdan derine renk değiştiren deniz ve dağlardan denize akan nehirler.
@@ -20,8 +20,12 @@
     foam: [150, 205, 205], shallow: [86, 162, 176], mid: [42, 108, 148], deep: [22, 60, 104],
   };
 
-  // Her katmanı farklı açıyla döndürülmüş fbm: değer gürültüsünün kare ızgara izini gizler
-  const ROT = Array.from({ length: 6 }, (_, i) => [Math.cos(0.7 * (i + 1)), Math.sin(0.7 * (i + 1))]);
+  // Her katmanı farklı açıyla döndürülmüş fbm: değer gürültüsünün kare ızgara izini gizler.
+  // Açıların kosinüs/sinüsleri sabit sayı olarak yazılı: Math.cos tarayıcıdan tarayıcıya son basamakta
+  // farklı olabilir; arazi oyun kurallarını etkilediği için her cihazda birebir aynı sonuç gerekir.
+  const ROT = [[0.7648421872844885, 0.644217687237691], [0.16996714290024104, 0.9854497299884601],
+    [-0.5048461045998576, 0.8632093666488737], [-0.9422223406686581, 0.3349881501559051],
+    [-0.9364566872907963, -0.35078322768961984], [-0.4902608213406994, -0.8715757724135882]];
   function rfbm(n, x, y, oct) {
     let s = 0, amp = 1, norm = 0, f = 1;
     for (let i = 0; i < oct; i++) {
@@ -30,6 +34,60 @@
       norm += amp; amp *= 0.5; f *= 2.03;
     }
     return s / norm;
+  }
+  function noises(seed) { seed = (seed >>> 0) || 1; return { nz: U.makeNoise((seed * 31 + 7) >>> 0), nz2: U.makeNoise((seed * 17 + 101) >>> 0) }; }
+
+  // Bir noktanın yüksekliği, nemi ve ince dokusu (kıyıya uzaklık dünya biriminde). Görsel arazi ve oyun kuralları
+  // bu tek fonksiyonu kullanır. Yalnızca + − × ÷, karekök ve taban kullanır: her tarayıcıda aynı sonuç.
+  function sample(N, wx, wy, coastDist, out) {
+    const nz = N.nz, nz2 = N.nz2;
+    const det = rfbm(nz2, wx / 70, wy / 70, 2);
+    const coast = smooth(0, 560, coastDist);
+    // dağ sıraları: geniş ölçekte bir maske, içinde sırtlar (ridged gürültü)
+    const zone = smooth(0.5, 0.7, rfbm(nz, wx / 1050 + 11.3, wy / 1050 - 4.7, 3));
+    const r1 = 1 - Math.abs(2 * rfbm(nz, wx / 330 + 3.1, wy / 330 + 9.2, 4) - 1);
+    const ridge = r1 * r1 * r1;
+    const r2 = 1 - Math.abs(2 * rfbm(nz2, wx / 115 - 1.7, wy / 115 + 6.1, 3) - 1); // ince sırtlar ve vadiler
+    const hills = rfbm(nz2, wx / 210 + 5.5, wy / 210 - 2.2, 3);
+    const mz = zone * Math.sqrt(coast);
+    let e = 0.05 + 0.3 * coast + mz * (0.56 * ridge + 0.18 * r2 * r2 * (0.4 + ridge)) + 0.16 * (hills - 0.45) * coast + 0.04 * (det - 0.5);
+    if (e > 0.8) e = 0.8 + (e - 0.8) * 0.45; // yumuşak tavan: zirveler düz bir plato olmasın
+    out[0] = Math.max(0, e);
+    out[1] = rfbm(nz, wx / 1300 - 7.7, wy / 1300 + 2.9, 3) * 0.85 + 0.15 * (1 - coast) + 0.08 * (hills - 0.5);
+    out[2] = det;
+    return out;
+  }
+
+  // ---- oyun kuralları için şehir arazileri ----
+  // def: savunma çarpanı · occ: işgal süresi çarpanı (büyük = daha yavaş ele geçirilir)
+  const TYPES = {
+    ova: { key: 'ova', name: 'Ova', icon: '🌾', def: 1, occ: 1, desc: 'Açık arazi: bonus yok' },
+    orman: { key: 'orman', name: 'Orman', icon: '🌲', def: 1.15, occ: 1.15, desc: 'Savunma +%15, işgal %15 yavaş' },
+    tepe: { key: 'tepe', name: 'Tepe', icon: '⛰', def: 1.2, occ: 1.15, desc: 'Savunma +%20, işgal %15 yavaş' },
+    dag: { key: 'dag', name: 'Dağ', icon: '🏔', def: 1.4, occ: 1.3, desc: 'Savunma +%40, işgal %30 yavaş' },
+    col: { key: 'col', name: 'Çöl', icon: '🏜', def: 0.9, occ: 0.9, desc: 'Savunma −%10, işgal %10 hızlı' },
+  };
+  // Her şehrin arazisi: merkezde ve çevresindeki 4 noktada ölçülen ortalama yükseklik ve nemden.
+  // Kıyı uzaklığı, kıyı kenarlarının noktalarına olan en kısa uzaklıktır (tuval gerekmez, oyun motorunda çalışır).
+  function classify(map) {
+    const N = noises(map.seed), out = [0, 0, 0];
+    const cx = [], cy = [];
+    for (const e of map.edges) if (e.b < 0) for (const p of e.pts) { cx.push(p[0]); cy.push(p[1]); }
+    const coastDist = (x, y) => {
+      let best = Infinity;
+      for (let k = 0; k < cx.length; k++) { const dx = cx[k] - x, dy = cy[k] - y, d = dx * dx + dy * dy; if (d < best) best = d; }
+      return cx.length ? Math.sqrt(best) : 1000;
+    };
+    return map.cities.map((c) => {
+      const r = Math.sqrt(c.area / 3.14159) * 0.4;
+      const pts = [[c.x, c.y], [c.x - r, c.y], [c.x + r, c.y], [c.x, c.y - r], [c.x, c.y + r]];
+      let e = 0, m = 0;
+      for (const [x, y] of pts) { sample(N, x, y, coastDist(x, y), out); e += out[0]; m += out[1]; }
+      e /= pts.length; m /= pts.length;
+      // eşikler uydu görünümündeki renk bantlarına yakın: tepe ≈ kahverengi yamaçlar, dağ ≈ kayalık/karlı zirveler
+      const type = e >= 0.54 ? 'dag' : e >= 0.34 ? 'tepe' : m >= 0.6 ? 'orman' : m < 0.37 ? 'col' : 'ova';
+      return { type, e: Math.round(e * 1000) / 1000, m: Math.round(m * 1000) / 1000 };
+    });
   }
 
   // İki geçişli pah (chamfer) uzaklık dönüşümü: seed=0 olan piksellere uzaklık (piksel cinsinden, ~öklid)
@@ -73,8 +131,7 @@
     const seed = (map.seed >>> 0) || 1;
     const S = Math.min(0.32, Math.sqrt(TARGET_PX / (map.W * map.H))); // doku pikseli / dünya birimi
     const W = Math.max(8, Math.ceil(map.W * S)), H = Math.max(8, Math.ceil(map.H * S));
-    const nz = U.makeNoise((seed * 31 + 7) >>> 0);
-    const nz2 = U.makeNoise((seed * 17 + 101) >>> 0);
+    const NZ = noises(seed), nz2 = NZ.nz2, out = [0, 0, 0];
     const rnd = U.mulberry32((seed ^ 0x2545f491) >>> 0);
 
     // 1) kara maskesi (şehir çokgenleri)
@@ -109,21 +166,9 @@
         for (let y = y0; y < Math.min(H, y0 + ROWS); y++) {
           for (let x = 0; x < W; x++) {
             const i = y * W + x, wx = x * inv, wy = y * inv;
-            const det = rfbm(nz2, wx / 70, wy / 70, 2);
-            detail[i] = det;
-            if (!land[i]) { elev[i] = 0; continue; }
-            const coast = smooth(0, 560, dIn[i] * inv);
-            // dağ sıraları: geniş ölçekte bir maske, içinde sırtlar (ridged gürültü)
-            const zone = smooth(0.5, 0.7, rfbm(nz, wx / 1050 + 11.3, wy / 1050 - 4.7, 3));
-            const r1 = 1 - Math.abs(2 * rfbm(nz, wx / 330 + 3.1, wy / 330 + 9.2, 4) - 1);
-            const ridge = r1 * r1 * r1;
-            const r2 = 1 - Math.abs(2 * rfbm(nz2, wx / 115 - 1.7, wy / 115 + 6.1, 3) - 1); // ince sırtlar ve vadiler
-            const hills = rfbm(nz2, wx / 210 + 5.5, wy / 210 - 2.2, 3);
-            const mz = zone * Math.sqrt(coast);
-            let e = 0.05 + 0.3 * coast + mz * (0.56 * ridge + 0.18 * r2 * r2 * (0.4 + ridge)) + 0.16 * (hills - 0.45) * coast + 0.04 * (det - 0.5);
-            if (e > 0.8) e = 0.8 + (e - 0.8) * 0.45; // yumuşak tavan: zirveler düz bir plato olmasın
-            elev[i] = Math.max(0, e);
-            moist[i] = rfbm(nz, wx / 1300 - 7.7, wy / 1300 + 2.9, 3) * 0.85 + 0.15 * (1 - coast) + 0.08 * (hills - 0.5);
+            if (!land[i]) { detail[i] = rfbm(nz2, wx / 70, wy / 70, 2); elev[i] = 0; continue; }
+            sample(NZ, wx, wy, dIn[i] * inv, out);
+            elev[i] = out[0]; moist[i] = out[1]; detail[i] = out[2];
           }
         }
       });
@@ -232,5 +277,5 @@
     return { cancel() { cancelled = true; } };
   }
 
-  G.Terrain = { build };
+  G.Terrain = { build, classify, sample, noises, TYPES };
 })();

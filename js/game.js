@@ -19,7 +19,10 @@
     recallTime: 1.2,
     // Başkenti savaşla düşen devletin topraklarının (başkent dahil) bu oranı fatihe geçer; en uzak kalanlar isyancılara
     conquestShare: 0.75,
+    // Yükseklik avantajı: saldıranın şehri hedeften en az heightStep yüksekse saldırı +%10, alçaksa −%10
+    heightStep: 0.1, heightBonus: 0.1,
   };
+  const NO_TERRAIN = { key: 'ova', name: 'Ova', icon: '🌾', def: 1, occ: 1, desc: 'Açık arazi: bonus yok' };
 
   const IDEO = {
     komunizm: { key: 'komunizm', name: 'Komünizm', troops: 90000, price: 0.9, atk: 1, def: 1, war: 1, factories: 2, rebelAtk: 1.05,
@@ -75,6 +78,8 @@
       this.mapType = opts.mapType || 'kita'; // harita tipi: kita, pangea, adalar, icdeniz, ikiz
       this.map = G.MapGen.generate(this.seed, N, this.mapType);
       this.mapType = this.map.mapType;
+      // şehir arazileri (ova/orman/tepe/dağ/çöl): haritadan türetilir, kaydedilmez; her cihazda aynı çıkar
+      this.terrain = G.Terrain && G.Terrain.classify ? G.Terrain.classify(this.map) : null;
       this.time = 0;
       this.phase = 'setup';
       this.version = 1; // sahiplik/ittifak değiştikçe artar (çizim önbelleği için)
@@ -277,10 +282,28 @@
       return res;
     }
 
+    // ---- yer şekilleri ----
+    terrainOf(cityId) {
+      const t = this.terrain && this.terrain[cityId], T = G.Terrain && G.Terrain.TYPES;
+      return (T && t && T[t.type]) || NO_TERRAIN;
+    }
+    // Komşu şehirden saldırırken yükseklik farkı: yüksekten alçağa saldıran +%10, alçaktan yükseğe saldıran −%10.
+    // Uçakla inen ya da komşu olmayan yerden gelen birliğe uygulanmaz.
+    heightAtk(fromId, toId) {
+      if (!this.terrain || fromId === null || fromId === undefined || fromId === toId) return 1;
+      const a = this.terrain[fromId], b = this.terrain[toId], fc = this.cities[fromId];
+      if (!a || !b || !fc || !fc.neighbors.includes(toId)) return 1;
+      const d = a.e - b.e;
+      return d >= CFG.heightStep ? 1 + CFG.heightBonus : d <= -CFG.heightStep ? 1 - CFG.heightBonus : 1;
+    }
+    // birliğin fromId'den city'ye saldırırken kullandığı çarpan (ideoloji, seviye, ikmal, yükseklik)
+    battleAtk(u, fromId, city) { return this.unitAtk(u, city.owner) * this.heightAtk(fromId, city.id); }
+
     defMult(cid, city) {
       const c = this.countries[cid];
       let m = c.isRebel ? 1 : (1 + c.defLvl * CFG.upgradeStep) * this.ideo(cid).def;
       if (city && city.cityDef) m *= 2;
+      if (city) m *= this.terrainOf(city.id).def; // yer şekli: dağ, tepe ve orman savunana yarar; çöl açık arazidir
       if (city && !c.isRebel) {
         if (city.origOwner === cid) m *= 1 + 0.1 * this.iu(cid, 'guard'); // Demokrasi: Ulusal Muhafız
         if (c.capital === city.id) m *= 1 + 0.25 * this.iu(cid, 'royal'); // Monarşi: Kraliyet Muhafızları
@@ -599,7 +622,7 @@
         const part = amount !== undefined && Math.round(amount) < u.troops ? U.clamp(Math.round(amount), 1, u.troops) : u.troops;
         // çok küçük bir kuvvet savunmayı hiç geçemiyorsa saldırı başlamaz
         const defs = this.defendersOf(toCity, cid);
-        const effD = this.effDefense(tc, defs), effA = part * this.unitAtk(u, tc.owner);
+        const effD = this.effDefense(tc, defs), effA = part * this.battleAtk(u, from, tc);
         if (defs.length && effA <= effD && part <= CFG.minAttackRemain) {
           return { err: `${tc.name} savunması (${U.fmtK(Math.round(effD))}) bu küçük kuvveti (${U.fmtK(part)}) geçer` };
         }
@@ -1118,7 +1141,7 @@
       if (this.friendly(u.owner, city.owner)) { this.placeUnit(u, cityId); return; }
       if (!this.hostile(u.owner, city.owner)) { u.move.from = fromId; this.retreat(u); return; }
       const defenders = this.defendersOf(cityId, u.owner);
-      const aM = this.unitAtk(u, city.owner);
+      const aM = this.battleAtk(u, fromId, city);
       const effA = u.troops * aM, effD = this.effDefense(city, defenders);
       if (defenders.length && effA <= effD && u.troops <= CFG.minAttackRemain) {
         this.say([u.owner, city.owner], `${this.countries[u.owner].name} ordusu ${city.name} önünde püskürtüldü.`, 'info');
@@ -1129,7 +1152,8 @@
       // (Zayıf — fabrikaya bağlı olmayan — birliğin saldırı gücü yarım olduğu için işgali de yarı hızda olur.)
       // Monarşi'nin Şövalye Süvarisi işgali hızlandırır.
       const cav = 1 + 0.15 * this.iu(u.owner, 'cavalry');
-      const dur = U.clamp((effD + CFG.occupyBase) / Math.max(effA * CFG.occupyRate, 1) / cav, CFG.occupyMin, CFG.occupyMax);
+      // Yer şekli işgal süresini de değiştirir: dağda %30, tepede ve ormanda %15 uzun, çölde %10 kısa.
+      const dur = U.clamp((effD + CFG.occupyBase) / Math.max(effA * CFG.occupyRate, 1) / cav, CFG.occupyMin, CFG.occupyMax) * this.terrainOf(cityId).occ;
       // prog: şehrin ne kadarının ele geçirildiği (0..1) — haritada sınırdan içeri doğru yavaş yavaş ilerler
       u.move = { kind: 'battle', from: fromId, to: cityId, path: [fromId, cityId], t0: this.time, t1: this.time + dur, effD0: Math.max(effD, 1), prog: 0 };
       this.emit({ type: 'sound', name: 'battleStart', cid: u.owner, target: city.owner, city: cityId });
@@ -1410,7 +1434,7 @@
       if (this.friendly(u.owner, city.owner)) { this.placeUnit(u, city.id); return; }
       if (!this.hostile(u.owner, city.owner)) { this.retreat(u); return; }
       const defenders = this.defendersOf(city.id, u.owner);
-      const aM = this.unitAtk(u, city.owner);
+      const aM = this.battleAtk(u, m.from, city);
       const effD = this.effDefense(city, defenders);
       const effA = u.troops * aM;
       // savunan kalmadıysa kuşatma süresi dolunca şehir düşer
@@ -1449,14 +1473,14 @@
         for (const u of units) {
           if (u.dead || u.move) continue;
           const here = this.cities[u.city];
-          const aM = (o) => this.unitAtk(u, o);
+          const aM = (t) => this.battleAtk(u, u.city, t);
           if (army.mode === 'attack') {
             const targets = here.neighbors.map((n) => this.cities[n]).filter((c) => this.hostile(cid, c.owner));
             if (targets.length) {
               let best = null, bestScore = -Infinity;
               for (const t of targets) {
                 const effD = this.effDefense(t, this.defendersOf(t.id, cid));
-                const effA = u.troops * aM(t.owner);
+                const effA = u.troops * aM(t);
                 const score = effA - effD * 1.05;
                 if (score > bestScore) { bestScore = score; best = t; }
               }
@@ -1472,7 +1496,7 @@
             let done = false;
             for (const t of lost) {
               const effD = this.effDefense(t, this.defendersOf(t.id, cid));
-              if (u.troops * aM(t.owner) > effD * 1.05) { this.cmdMove(cid, u.id, t.id); done = true; break; }
+              if (u.troops * aM(t) > effD * 1.05) { this.cmdMove(cid, u.id, t.id); done = true; break; }
             }
             if (done) continue;
             const threatenedHere = this.incomingAttacks(u.city).length > 0;

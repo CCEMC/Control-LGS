@@ -150,7 +150,61 @@
       // iç şehir sınırlarını arazi katmanına bas (her karede binlerce çizgi tekrarını önler)
       c.lineJoin = 'round'; c.lineCap = 'round';
       c.strokeStyle = 'rgba(58,40,20,0.42)'; c.lineWidth = 1.8; c.stroke(this.inner);
+      this.drawTerrainGlyphs(c);
       this.composeMap();
+    }
+
+    // Eski harita görünümünde yer şekilleri: antika harita usulü mürekkep işaretleri (dağ, tepe, orman, kum tepesi).
+    // Şehrin orta-altına iki işaret; asker sayısı ortada, adı üstte kalır.
+    drawTerrainGlyphs(c) {
+      const g = this.game, S = this.layerScale;
+      if (!g.terrain) return;
+      const INKG = 'rgba(58,40,20,0.72)';
+      c.save();
+      c.lineJoin = 'round'; c.lineCap = 'round';
+      for (const city of g.cities) {
+        const key = g.terrainOf(city.id).key;
+        if (key === 'ova') continue;
+        const r = Math.sqrt(g.map.cities[city.id].area / Math.PI);
+        const sz = U.clamp(r * 0.24, 7, 19);
+        const path = this.cityPaths[city.id];
+        for (const [fx, fy] of [[-0.5, 0.36], [0.5, 0.36]]) {
+          const x = city.x + fx * r, y = city.y + fy * r;
+          if (!c.isPointInPath(path, x * S, y * S)) continue;
+          c.lineWidth = Math.max(1.2, sz * 0.13); c.strokeStyle = INKG;
+          if (key === 'dag') {
+            for (const [dx, k] of [[-0.45, 0.75], [0.35, 1]]) {
+              const px = x + dx * sz, s2 = sz * k, top = y - s2 * 0.8, base = y + sz * 0.5;
+              c.beginPath(); c.moveTo(px - s2 * 0.85, base); c.lineTo(px, top); c.lineTo(px + s2 * 0.85, base); c.closePath();
+              c.fillStyle = 'rgba(244,234,206,0.7)'; c.fill();
+              c.beginPath(); c.moveTo(px, top); c.lineTo(px + s2 * 0.85, base); c.lineTo(px + s2 * 0.12, base); c.closePath();
+              c.fillStyle = 'rgba(58,40,20,0.38)'; c.fill();
+              c.beginPath(); c.moveTo(px - s2 * 0.85, base); c.lineTo(px, top); c.lineTo(px + s2 * 0.85, base); c.stroke();
+            }
+          } else if (key === 'tepe') {
+            for (const dx of [-0.5, 0.5]) {
+              const px = x + dx * sz;
+              c.beginPath(); c.moveTo(px - sz * 0.7, y + sz * 0.3); c.quadraticCurveTo(px, y - sz * 0.75, px + sz * 0.7, y + sz * 0.3); c.stroke();
+              c.beginPath(); c.moveTo(px + sz * 0.12, y - sz * 0.12); c.lineTo(px + sz * 0.42, y + sz * 0.22); c.stroke();
+            }
+          } else if (key === 'orman') {
+            for (const [dx, dy] of [[-0.55, 0.15], [0, -0.1], [0.55, 0.15]]) {
+              const px = x + dx * sz, py = y + dy * sz;
+              c.beginPath(); c.moveTo(px, py + sz * 0.55); c.lineTo(px, py + sz * 0.1); c.stroke();
+              c.beginPath(); c.arc(px, py - sz * 0.08, sz * 0.3, 0, Math.PI * 2);
+              c.fillStyle = 'rgba(66,92,48,0.55)'; c.fill(); c.stroke();
+            }
+          } else if (key === 'col') {
+            for (const [dx, dy] of [[-0.4, 0], [0.45, 0.35]]) {
+              const px = x + dx * sz, py = y + dy * sz;
+              c.beginPath(); c.moveTo(px - sz * 0.6, py + sz * 0.15); c.quadraticCurveTo(px - sz * 0.1, py - sz * 0.35, px + sz * 0.6, py + sz * 0.15); c.stroke();
+            }
+            c.fillStyle = INKG;
+            for (const [dx, dy] of [[-0.7, 0.5], [0, 0.55], [0.15, -0.3], [-0.2, 0.25]]) { c.beginPath(); c.arc(x + dx * sz, y + dy * sz, Math.max(0.8, sz * 0.06), 0, Math.PI * 2); c.fill(); }
+          }
+        }
+      }
+      c.restore();
     }
 
     // Arazi görünümünde kara katmanı: nehirler + yarı saydam ülke renkleri (yer şekilleri altından görünür)
@@ -495,6 +549,7 @@
       this.drawCityIcons(ctx, visible, z);
       this.drawMoving(ctx, now);
       this.drawTokens(ctx, visible, now);
+      this.drawTerrainBadges(ctx);
       this.drawProjectiles(ctx);
       this.drawFx(ctx, now);
       this.drawCommandHint(ctx);
@@ -867,6 +922,35 @@
           ctx.lineWidth = 3; ctx.strokeStyle = terr ? 'rgba(10,10,8,0.7)' : 'rgba(240,228,196,0.85)'; ctx.strokeText(city.name, sx, ny);
           ctx.fillStyle = terr ? '#fbf3dc' : INK; ctx.fillText(city.name, sx, ny);
         }
+      }
+    }
+
+    // Birlik seçiliyken saldırılabilir komşu şehirlerin arazi rozeti: yer şekli, savunma etkisi, yükseklik farkı.
+    // Kırmızımsı = saldırana zor (dağ, tepe, orman, yokuş yukarı), yeşil = kolay (çöl, yüksekten saldırı).
+    drawTerrainBadges(ctx) {
+      const g = this.game, ui = this.ui, s = ui.scale;
+      const sel = ui.selectedUnit();
+      if (!sel || sel.city === null || !g.terrain) return;
+      const here = g.cities[sel.city];
+      const font = `bold ${11 * s}px ${FONT}`;
+      ctx.font = font; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      for (const n of here.neighbors) {
+        const c = g.cities[n];
+        if (!g.hostile(sel.owner, c.owner)) continue;
+        const T = g.terrainOf(n), h = g.heightAtk(sel.city, n);
+        if (T.def === 1 && h === 1) continue;
+        const [sx, sy] = this.toScreen(c.x, c.y);
+        if (sx < -60 || sx > this.vw + 60 || sy < -60 || sy > this.vh + 60) continue;
+        let txt = T.icon;
+        if (T.def !== 1) txt += ` ${T.def > 1 ? '+' : '−'}%${Math.round(Math.abs(T.def - 1) * 100)}`;
+        if (h > 1) txt += ' ⬇'; else if (h < 1) txt += ' ⬆';
+        const net = h / T.def;
+        const cnt = c.factories + c.building.length + (c.cityDef ? 1 : 0) + (c.airDef ? 1 : 0);
+        const bw = this.measureCached(ctx, font, txt) + 12 * s, bx = sx, by = sy + (cnt ? 40 : 26) * s;
+        ctx.fillStyle = net < 0.97 ? 'rgba(122,38,22,0.92)' : net > 1.03 ? 'rgba(40,92,32,0.92)' : 'rgba(74,58,40,0.92)';
+        ctx.beginPath(); ctx.ellipse(bx, by, bw / 2, 9.5 * s, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.lineWidth = 1.5; ctx.strokeStyle = '#fbf1d6'; ctx.stroke();
+        ctx.fillStyle = '#fff'; ctx.fillText(txt, bx, by + 0.5);
       }
     }
 

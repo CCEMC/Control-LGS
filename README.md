@@ -63,8 +63,23 @@ bir sonraki açılışta yeni sürümü alır.
 - **Uydu görünümü (yer şekilleri):** harita, haritanın tohumundan üretilen uydu fotoğrafı görünümlü arazinin üstünde çizilir:
   kıyıdan içeri yükselen arazi, sırtlı dağ sıraları ve karlı zirveler, nem haritasına göre orman / çayır / bozkır / çöl, kumsallar,
   kuzeybatıdan ışıklı kabartma gölgesi, sığdan derine renk değiştiren deniz ve dağlardan denize akan nehirler. Ülke renkleri yarı
-  saydamdır, sınırlar açık renkli çizgilerle görünür. Yalnızca görseldir (savaş kurallarını değiştirmez). Oyun menüsünden ya da
-  **G** tuşuyla eski parşömen haritaya geçilebilir; seçim cihazda hatırlanır. Arazi oyun açılırken ~0,5 sn'de, dilimler hâlinde üretilir.
+  saydamdır, sınırlar açık renkli çizgilerle görünür. Oyun menüsünden ya da
+  **G** tuşuyla eski parşömen haritaya geçilebilir (orada yer şekilleri mürekkep işaretleriyle çizilir); seçim cihazda hatırlanır.
+  Arazi oyun açılırken ~0,5 sn'de, dilimler hâlinde üretilir.
+- **Yer şekilleri savaşı etkiler:** her şehrin arazisi, uydu görünümündeki yükseklik ve nemden belirlenir:
+
+  | Arazi | Savunma | İşgal süresi |
+  |---|---|---|
+  | 🏔 Dağ | +%40 | %30 uzun |
+  | ⛰ Tepe | +%20 | %15 uzun |
+  | 🌲 Orman | +%15 | %15 uzun |
+  | 🌾 Ova | — | — |
+  | 🏜 Çöl | −%10 | %10 kısa |
+
+  Komşu şehre **yüksekten saldıran +%10**, **yokuş yukarı saldıran −%10** güçle vurur (uçakla inen birliğe uygulanmaz).
+  Arazi şehrin ipucu kutusunda ve seçili birliğin alt çubuğunda yazar; birlik seçiliyken saldırılabilir komşuların üzerinde
+  rozet çıkar (kırmızı = zor, yeşil = kolay hedef). Botlar da hesaplarında araziyi kullanır. Arazi her cihazda birebir aynı
+  hesaplanır (yalnızca toplama/çarpma ve karekök; çevrimiçi oyunda host ile istemci aynı sonucu bulur).
 - **Harita tipleri** (giriş ekranında küçük önizlemeleriyle seçilir; çevrimiçide oda sahibi seçer):
   **Kıta** (klasik, körfezli ve yarımadalı), **Pangea** (yuvarlak dev kıta), **Takımadalar** (dar kara köprüleriyle bağlı adalar,
   yaklaşık ülke başına bir ada), **İç Deniz** (ortadaki denizi çevreleyen halka), **İkiz Kıtalar** (tek köprüyle bağlı iki kıta) ve **Rastgele**.
@@ -146,7 +161,7 @@ fiyatı seviye başına artar (6 → 9 → 12₺, Komünizm'de %10 ucuz). Etkile
 - `js/net.js` — çevrimiçi oyun: oda kur / katıl (PeerJS), komutların host'a iletilmesi, durum eşitleme
 - `js/game.js` — oyun kuralları, kayıt/yükleme. DOM kullanmaz; tüm eylemler `cmd*` komutlarıyla gelir
 - `js/bot.js` — bot yapay zekâsı (oyuncuyla aynı komutları kullanır)
-- `js/terrain.js` — uydu görünümlü arazi üretimi (yükseklik, dağlar, bitki örtüsü, deniz derinliği, nehirler; yalnızca görsel)
+- `js/terrain.js` — uydu görünümlü arazi üretimi (yükseklik, dağlar, bitki örtüsü, deniz derinliği, nehirler) ve şehir arazisi sınıflandırması (ova/orman/tepe/dağ/çöl; savaş kuralları için)
 - `js/render.js` — harita, birlikler, efektler, minimap
 - `js/ui.js` — menüler, diyaloglar, gelen iletiler
 - `js/main.js` — giriş ekranı, oyun döngüsü, girişler, uygulama (PWA) özellikleri

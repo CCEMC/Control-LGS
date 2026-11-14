@@ -377,7 +377,7 @@
               <button class="btn sm" data-bar="pct" data-pct="0.75">%75</button>
               <button class="btn sm" data-bar="pct" data-pct="1">Tümü</button>
             </span>${cancelBtn}</div>${armyRow}
-            <small>Hedef şehre ${this.mode === 'pc' ? 'tıkla' : 'dokun'}: kendi şehrin = taşı · komşu düşman = saldır</small>`;
+            <small>Hedef şehre ${this.mode === 'pc' ? 'tıkla' : 'dokun'}: kendi şehrin = taşı · komşu düşman = saldır · ⬇ yüksekten +%10, ⬆ yokuş yukarı −%10</small>`;
           this._pctBtns = [...bar.querySelectorAll('[data-pct]')];
         } else { bar.innerHTML = ''; this._pctBtns = null; }
       }
@@ -394,7 +394,8 @@
         const maxK = Math.max(1, Math.ceil(sel.troops / 1000));
         if (r && +r.max !== maxK) { r.max = maxK; }
         if (this.amountK > maxK) this.amountK = maxK;
-        this._txt('selInfo', `${fmtK(sel.troops)} · ${g.cities[sel.city].name}${sel.weak ? ' · ❗ fabrikaya bağlı değil (−%50)' : ''}`);
+        const ter = g.terrainOf(sel.city);
+        this._txt('selInfo', `${fmtK(sel.troops)} · ${g.cities[sel.city].name} (${ter.icon} ${ter.name})${sel.weak ? ' · ❗ fabrikaya bağlı değil (−%50)' : ''}`);
         this._txt('amtVal', fmtK(Math.min(sel.troops, this.amountK * 1000)));
         const q = this._pctBtns;
         if (q) for (let i = 0; i < q.length; i++) {
@@ -564,20 +565,23 @@
       if (c.cityDef) struct.push('şehir savunması');
       if (c.airDef) struct.push('hava koruma');
       const defM = g.defMult(c.owner, c);
-      if (defM > 1.005) struct.push(`🛡 ×${defM.toFixed(2)}`);
+      const ter = g.terrainOf(cityId);
+      if (Math.abs(defM - 1) > 0.005) struct.push(`🛡 ×${defM.toFixed(2)}`);
       const sel = this.selUnit !== null ? this.selectedUnit() : null;
       let actHint = '';
       if (sel && cityId !== sel.city) {
         if (g.friendly(sel.owner, c.owner)) actHint = '<div class="tt-hint ok">✓ Tıkla: destek / taşı</div>';
         else if (g.hostile(sel.owner, c.owner) && g.cities[sel.city].neighbors.includes(cityId)) {
           const send = Math.min(sel.troops, this.amountK * 1000);
-          const atkM = g.unitAtk(sel, c.owner);
+          const atkM = g.battleAtk(sel, sel.city, c);
+          const hM = g.heightAtk(sel.city, cityId);
+          const hTxt = hM > 1 ? '<div class="tt-hint ok">⬇ Yüksekten saldırı: +%10</div>' : hM < 1 ? '<div class="tt-hint">⬆ Yokuş yukarı saldırı: −%10</div>' : '';
           const defT = units.reduce((sum, u) => sum + (g.friendly(u.owner, c.owner) ? u.troops : 0), 0);
-          if (defT <= 0) actHint = '<div class="tt-hint ok">⚔ Tıkla: saldır (boş şehir)</div>';
+          if (defT <= 0) actHint = '<div class="tt-hint ok">⚔ Tıkla: saldır (boş şehir)</div>' + hTxt;
           else {
             const ratio = (send * atkM) / (defT * defM);
             const tag = ratio >= 1.25 ? 'avantajlı' : ratio >= 0.85 ? 'denk' : 'riskli';
-            actHint = `<div class="tt-hint atk">⚔ Tıkla: saldır (${fmtK(send)} ×${atkM.toFixed(2)} vs ${fmtK(defT)} ×${defM.toFixed(2)} · ${tag})</div>`;
+            actHint = `<div class="tt-hint atk">⚔ Tıkla: saldır (${fmtK(send)} ×${atkM.toFixed(2)} vs ${fmtK(defT)} ×${defM.toFixed(2)} · ${tag})</div>` + hTxt;
           }
         }
         else if (!g.hostile(sel.owner, c.owner) && !o.isRebel) actHint = '<div class="tt-hint">⚠ Saldırı için önce savaş ilan et</div>';
@@ -585,6 +589,7 @@
       }
       const html = `<div class="tt-h">${isCap ? '★ ' : ''}${esc(c.name)}</div>
         <div class="tt-o"><span class="sw" style="background:${o.color}"></span>${esc(o.name)}${isCap ? ' · başkent' : ''}${g.isBorderCity(cityId) ? ' · sınır' : ''}</div>
+        <div class="tt-t tt-t-${ter.key}">${ter.icon} ${ter.name} · ${ter.desc}</div>
         ${troops}${struct.length ? `<div class="tt-s">${struct.join(' · ')}</div>` : ''}${inc ? `<div class="tt-w">⚔︎ saldırı altında!</div>` : ''}${units.some((u) => u.weak) ? `<div class="tt-w">❗ Fabrikaya bağlı değil: asker −%50</div>` : ''}${actHint}`;
       const changed = html !== this._tipHtml || this._tipHidden !== false;
       if (changed) {
@@ -1466,8 +1471,12 @@
       İlişkiler tekliflerin kabul edilme şansını etkiler. Müttefiklerini savaşa çağırabilirsin.</p></section>
     <section><h4>🎖 Askeri yönetim ve mağaza</h4><p>Asker üret (+1k = 1₺), <b>Sınırlara dağıt</b> ile yeni askerleri cepheye yolla, saldırı/savunma geliştir,
       ideolojine özel geliştirmeleri al, ordu kur. Mevcut orduya <b>+ Birlik</b> düğmesiyle, birlik seçiliyken alttaki ordu düğmeleriyle veya ordunun şehrine asker göndererek sonradan birlik ekleyebilirsin. Mağazada fabrika, blitzkrieg, uçak, füze, isyan ve savunmalar var.</p></section>
+    <section><h4>⛰ Yer şekilleri</h4><p>Her şehrin bir arazisi var (şehrin üzerine gel ya da birlik seçince düşman komşularda rozet olarak görünür):
+      <b>🏔 Dağ</b> savunma +%40 ve işgal %30 yavaş · <b>⛰ Tepe</b> savunma +%20, işgal %15 yavaş · <b>🌲 Orman</b> savunma +%15, işgal %15 yavaş ·
+      <b>🏜 Çöl</b> savunma −%10, işgal %10 hızlı · <b>🌾 Ova</b> etkisiz. Komşu şehre <b>yüksekten saldıran +%10</b>, <b>yokuş yukarı saldıran −%10</b> güçle vurur.
+      Dağ geçitlerini tut, düşmanı ovada karşıla.</p></section>
     <section><h4>🗺 Haritalar</h4><p>Kıta, Pangea, Takımadalar, İç Deniz, İkiz Kıtalar ya da Rastgele. Takımadalarda ve ikiz kıtalarda
-      dar kara köprüleri kilit noktalardır; köprüyü tutan, karşı kıyıya geçişi tutar.</p></section>
+      dar kara köprüleri kilit noktalardır; köprüyü tutan, karşı kıyıya geçişi tutar. Adalar alçak ve ormanlıktır; dağlar büyük kıtaların içindedir.</p></section>
     <section><h4>🌐 Çevrimiçi</h4><p>Giriş ekranında <b>Oda Kur</b> ile 5 harfli bir kod al, arkadaşların kodla katılsın. Harita oyuncu sayısına göre oluşur.
       Oyun odayı kuran cihazda çalışır; o sekme açık kalmalı.</p></section>
     <section><h4>⌨ Kısayollar</h4><p>WASD / oklar: kamera · tekerlek: yakınlaştır · 1–4: menüler · Boşluk: başkente dön · Q / sağ tık: iptal ·
