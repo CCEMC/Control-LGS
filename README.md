@@ -73,6 +73,14 @@ bir sonraki açılışta yeni sürümü alır.
 - **Yapı modelleri:** fabrikalar haritada sade siluetler (testere dişli çatı ve bacadan tüten duman); inşaattaki fabrika soluk
   siluet ve altında dolan çubukla görünür. Şehir savunması olan şehrin sınırı boyunca, biraz içeriden giden bir sur çizgisi ve
   üzerinde dik çizgiler çizilir. Hava koruma kum torbalı uçaksavar ve dönen radar çanağıdır. Modeller yakınlaştıkça büyür.
+- **Asker bakımı:** her şehir 4k askeri bedava besler; fazlası için her gelir turunda (15 sn) her 20k asker 1₺ tutar.
+  Hazine bakımı karşılamazsa ödenemeyen her 1₺ için ~5k asker firar eder (şehirde bekleyen birliklerden eşit oranda).
+  Üst çubuktaki gelir bakım düşülmüş net gelirdir; Askerî Yönetim'deki **Bakım ve moral** kartı geliri, bakımı ve bedava kapasiteyi gösterir.
+  Botlar da gelirlerini aşacak kadar asker biriktirmez.
+- **Savaş yorgunluğu:** savaş sürdükçe halk yorulur (dakikada ~%4, her ek cephe %50 daha hızlı); şehir kaybetmek +%3,
+  şehir almak −%1,5. Yorgunluk gelir ve asker üretim hızını en çok %50 düşürür, barışta dakikada ~%12 geçer.
+  %35 / %65 / %90 eşiklerinde uyarı gelir; üst çubukta 😓 bayrağı görünür, diplomasi ekranında iki tarafın yorgunluğu yazar.
+  Yorgun botlar barış teklif eder, barışı daha kolay kabul eder ve yeni savaş açmaz.
 - **Yer şekilleri savaşı etkiler:** her şehrin arazisi, uydu görünümündeki yükseklik ve nemden belirlenir:
 
   | Arazi | Savunma | İşgal süresi |

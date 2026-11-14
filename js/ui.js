@@ -472,7 +472,20 @@
       const incW = ((p.incomeTimer / G.CFG.incomeInterval) * 100).toFixed(1) + '%';
       if (this._lastIncW !== incW) { this._lastIncW = incW; this.$('tbInc').style.width = incW; }
       const f = g.factoriesOf(p.id);
-      this._txt('tbIncTxt', `+${g.incomeOf(p.id)}₺ / ${G.CFG.incomeInterval} sn`);
+      // net gelir: fabrika geliri − asker bakımı (eksiye düşerse kırmızı)
+      const net = g.netIncome(p.id);
+      this._txt('tbIncTxt', `${net >= 0 ? '+' : '−'}${fmtMoney(Math.abs(net)).replace('₺', '')}₺ / ${G.CFG.incomeInterval} sn`);
+      const negInc = net < 0;
+      if (this._negInc !== negInc) { this._negInc = negInc; this.$('tbIncTxt').classList.toggle('neg', negInc); }
+      // savaş yorgunluğu bayrağı
+      const wy = Math.round((p.weary || 0) * 100);
+      const wyOn = wy >= 3;
+      if (this._lastWy !== wyOn) { this._lastWy = wyOn; this.$('tbWeary').classList.toggle('hidden', !wyOn); }
+      if (wyOn) {
+        this._txt('tbWeary', `😓 Yorgunluk %${wy}`);
+        const lvl = wy >= 80 ? 'max' : wy >= 50 ? 'hi' : '';
+        if (this._wyLvl !== lvl) { this._wyLvl = lvl; const el = this.$('tbWeary'); el.classList.toggle('hi', lvl === 'hi'); el.classList.toggle('max', lvl === 'max'); }
+      }
       this._txt('tbTroops', fmtK(g.totalTroops(p.id)) + (p.queue ? ` (+${p.queue}k)` : ''));
       this._txt('tbFac', String(f));
       const counts = this._cntBuf || (this._cntBuf = new Int16Array(12));
@@ -789,6 +802,8 @@
             const peaceP = !!g.pendingProposal(me, id, 'peace');
             conflict = `<p class="war-line">⚔ Savaş sürüyor · ${this.L(() => fmtTime(g.time - (w ? w.since : g.time)))}
                 · cephede ${this.L(() => String(g.units.filter((u) => !u.dead && u.move && u.move.kind === 'battle' && ((u.owner === me && g.cities[u.move.to].owner === id) || (u.owner === id && g.cities[u.move.to].owner === me))).length))} çatışma</p>
+              <p class="war-weary">😓 Savaş yorgunluğu: sen <b>${this.L(() => '%' + Math.round((P.weary || 0) * 100))}</b> · ${esc(t.name)} <b>${this.L(() => '%' + Math.round((t.weary || 0) * 100))}</b>
+                <small>— yorgun taraf barışa daha yatkındır</small></p>
               <div class="actions">${B('peace', peaceP ? '🕊 Barış teklif edildi' : '🕊 Barış Teklif Et', { cls: 'green', dis: peaceP })}
               ${B('surrender', '🏳 Teslim Ol', { cls: 'white', title: 'Savaş hemen biter, hazinenin yarısını tazminat ödersin' })}
               ${myAl ? B('callallies', '📯 Müttefikleri Çağır', { cls: 'red', title: 'İttifak üyelerini bu savaşa çağır' }) : ''}</div>`;
@@ -857,6 +872,26 @@
               <small class="pr-note">${this.L(() => (P.queue > 0 ? `Sıra ${Math.max(0, Math.ceil(P.queue * g.troopTime(me) - P.prodTimer))} sn'de biter` : 'Üretim yok'))} ·
                 ${this.L(() => (P.autoDist ? 'yeni askerler sınırlara yürür' : 'yeni askerler başkentte doğar'))}</small>
             </div></div></div>`;
+      // asker bakımı ve savaş yorgunluğu
+      const CF = G.CFG, upk0 = g.upkeepOf(me), net0 = g.netIncome(me);
+      const signed = (n) => (n >= 0 ? '+' : '−') + fmtMoney(Math.abs(n));
+      const wyText = () => {
+        const w = P.weary || 0, cut = Math.round(g.wearyCut(me) * 100), foes = g.warFoes(me);
+        if (w < 0.01 && !foes) return `Barıştasın. Savaşta dakikada ~%${Math.round(CF.wearyWarRate * 6000)} artar (her ek cephe daha hızlı); şehir kaybetmek arttırır, şehir almak azaltır.`;
+        return `Gelir ve asker üretimi −%${cut}. ${foes ? (foes > 1 ? `${foes} cephede savaş: hızla artıyor.` : 'Savaş sürdükçe artıyor; barış yaparsan geçer.') : 'Barıştasın: yavaş yavaş geçiyor.'}`;
+      };
+      const upkCard = `<div class="mcard upk"><div class="mc-h">${icon('coin')}<b>Bakım ve moral</b><span class="mc-r">her ${CF.incomeInterval} sn</span></div>
+          <div class="upk-grid">
+            <div><small>Fabrika geliri</small><b class="pos">${this.L(() => signed(g.incomeOf(me)))}</b></div>
+            <div><small>Asker bakımı</small><b class="${upk0 > 0 ? 'neg' : ''}">${this.L(() => '−' + fmtMoney(g.upkeepOf(me)))}</b></div>
+            <div><small>Net</small><b class="${net0 < 0 ? 'neg' : 'pos'}">${this.L(() => signed(g.netIncome(me)))}</b></div>
+          </div>
+          <div class="upk-bar" title="Asker sayın (çizgi: bedava kapasite)">${this.LW(() => Math.min(100, (g.totalTroops(me) / Math.max(1, 2 * g.upkeepFree(me))) * 100))}<s style="left:50%"></s></div>
+          <p class="upk-note">${this.L(() => `${fmtK(g.totalTroops(me))} asker · ${fmtK(g.upkeepFree(me))} bedava (şehir başına ${fmtK(CF.upkeepFreePerCity)})`)} · fazlası için her ${fmtK(CF.upkeepPer)} asker = 1₺.
+            ${net0 < 0 ? '<span class="neg">Hazine eriyor: para biterse askerler firar eder.</span>' : ''}</p>
+          <div class="upk-sub"><b>Savaş yorgunluğu</b><span>${this.L(() => '%' + Math.round((P.weary || 0) * 100))}</span></div>
+          <div class="upk-bar wy">${this.LW(() => (P.weary || 0) * 100)}</div>
+          <p class="upk-note">${this.L(wyText)}</p></div>`;
       // ekipman: saldırı ve savunma kartları
       const eq = (kind, label, ic) => {
         const lvl = kind === 'atk' ? P.atkLvl : P.defLvl, max = G.CFG.maxUpgrade;
@@ -893,7 +928,7 @@
         ${armies.length ? `<div class="army-grid">${armies.map(armyCard).join('')}</div><small class="note"><b>+ Birlik</b> veya birlik seçiliyken alttaki <b>+ ⚑ Ordu</b> düğmesiyle sonradan birlik ekleyebilirsin; ordunun şehrine giden askerler de katılır.</small>`
           : '<div class="army-empty">Ordular kendi kendine savaşır: <b>Taarruz</b> ordusu düşman şehirlerini işgal eder, <b>Savunma</b> ordusu sınırlarını korur ve kaybedilen şehirleri geri alır. <b>+ Ordu Kur</b>\'a bas, birliklerini haritada işaretle.</div>'}</div>`;
       const tap = this.mode === 'pc' ? 'tıkla' : 'dokun';
-      return `<div class="mil scroll">${warn}${hero}${prod}${equip}${ideoSect}${armySect}
+      return `<div class="mil scroll">${warn}${hero}${prod}${upkCard}${equip}${ideoSect}${armySect}
         <p class="note">Birliğe ${tap} → miktarı seç → hedef şehre ${tap}.${this.mode === 'pc' ? ' Q: iptal.' : ''}</p></div>`;
     }
 
@@ -986,7 +1021,7 @@
       const ideo = g.ideo(me);
       const treasury = `<div class="treasury"><span class="tr-ic">${icon('coin')}</span>
           <div class="tr-m"><small>Hazine</small><b>${this.L(() => fmtMoney(P.money))}</b></div>
-          <div class="tr-inc"><small>Gelir <b>+${inc}₺</b> / ${G.CFG.incomeInterval} sn</small><div class="bar">${this.LW(() => (P.incomeTimer / G.CFG.incomeInterval) * 100)}</div>
+          <div class="tr-inc"><small>Gelir <b>+${inc}₺</b>${g.upkeepOf(me) > 0 ? ` − bakım <b>${g.upkeepOf(me)}₺</b>` : ''} / ${G.CFG.incomeInterval} sn</small><div class="bar">${this.LW(() => (P.incomeTimer / G.CFG.incomeInterval) * 100)}</div>
             <small>${this.L(() => 'sonraki ödeme ' + Math.max(0, Math.ceil(G.CFG.incomeInterval - P.incomeTimer)) + ' sn')}${ideo.price < 1 ? ` · ${esc(ideo.name)}: fiyatlar %${Math.round((1 - ideo.price) * 100)} ucuz` : ''}</small></div></div>`;
       const groups = GROUPS.map((gr) => `<h5 class="sh-h ${gr.cls}">${icon(gr.ic)}${gr.t}</h5>
         <div class="shop-grid">${gr.keys.map((k) => card(SHOP.find((s) => s.key === k), gr.cls)).join('')}</div>`).join('');
@@ -1463,10 +1498,14 @@
       senden en uzak %25'i isyancılara kalır.
       Haritada senden başka yalnızca müttefiklerin kalınca kazanırsın.</p></section>
     <section><h4>🏭 Başlangıç ve ekonomi</h4><p>Önce fabrikalarını kuracağın kendi şehrini seç. Her fabrika <b>15 sn'de 1₺</b> verir, yenisi 6 sn'de kurulur.
-      Kendi toprağın üzerinden hiçbir fabrikaya bağlı olmayan şehirlerdeki askerler <b>❗ %50 zayıf ve yavaştır</b>.</p></section>
+      Kendi toprağın üzerinden hiçbir fabrikaya bağlı olmayan şehirlerdeki askerler <b>❗ %50 zayıf ve yavaştır</b>.</p>
+      <p><b>💰 Asker bakımı:</b> her şehrin <b>4k askeri bedava</b> beslenir; fazlası için her gelir turunda <b>her 20k asker 1₺</b> yer.
+      Hazine bakımı karşılamazsa askerlerin bir kısmı <b>firar eder</b>. Üst çubuktaki gelir bakım düşülmüş net gelirdir.</p></section>
     <section><h4>⚔ Asker ve savaş</h4><p>Birliğe (haritadaki asker sayısına) dokun, miktarı seç, hedef şehre dokun: kendi şehrine taşır, <b>komşu düşman şehrine saldırır</b>.
       Saldırı sınırda hemen başlar; büyük birlik şehri daha çabuk alır. Bir ülkeye saldırmak için önce Diplomasi'den <b>savaş hakkı</b> alıp (20 sn) savaş ilan et.
-      Saldırdığın şehrin çıkış şehri saldırıya uğrarsa birliğin yarısı savunmaya döner.</p></section>
+      Saldırdığın şehrin çıkış şehri saldırıya uğrarsa birliğin yarısı savunmaya döner.</p>
+      <p><b>😓 Savaş yorgunluğu:</b> savaş sürdükçe halk yorulur (dakikada ~%4, her ek cephe daha hızlı); şehir kaybetmek yorgunluğu arttırır,
+      şehir almak azaltır. Yorgunluk <b>gelirini ve asker üretimini en çok %50</b> düşürür, barışta yavaşça geçer. Yorgun ülkeler barışa daha yatkındır.</p></section>
     <section><h4>🤝 Diplomasi</h4><p>Talep, destek ve takas teklif et; ittifak kur ya da bir ittifaka katıl; barış teklif et ya da teslim ol.
       İlişkiler tekliflerin kabul edilme şansını etkiler. Müttefiklerini savaşa çağırabilirsin.</p></section>
     <section><h4>🎖 Askeri yönetim ve mağaza</h4><p>Asker üret (+1k = 1₺), <b>Sınırlara dağıt</b> ile yeni askerleri cepheye yolla, saldırı/savunma geliştir,

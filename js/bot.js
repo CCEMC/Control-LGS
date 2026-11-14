@@ -90,7 +90,13 @@
     const saving = !atWar && facs < want && game.citiesOf(cid).some((x) => game.factorySlots(x) < game.factoryLimit(cid));
     const threatened = game.neighborsOfCountry(cid).some((n) => game.countries[n] && game.countries[n].warRights && game.countries[n].warRights[cid] !== undefined);
     const reserve = atWar || threatened ? 1 : saving ? fp + 2 : 4;
-    const spend = Math.floor((c.money - reserve) * (atWar ? 0.9 : 0.55) / game.price(cid, 'troop'));
+    let spend = Math.floor((c.money - reserve) * (atWar ? 0.9 : 0.55) / game.price(cid, 'troop'));
+    // Asker bakımı: geliri aşacak kadar asker biriktirme. Barışta gelirin %55'i, savaşta %90'ı bakıma gidebilir;
+    // savaşta hazineden ~6 gelir turu (90 sn) daha bakım karşılanabilir.
+    const CFG = G.CFG, inc = game.incomeOf(cid);
+    const cap = game.upkeepFree(cid) + inc * (atWar || threatened ? 0.9 : 0.55) * CFG.upkeepPer + (atWar ? (Math.max(0, c.money) / 6) * CFG.upkeepPer : 0);
+    const room = Math.floor((cap - game.totalTroops(cid) - c.queue * 1000) / 1000);
+    spend = Math.min(spend, Math.max(0, room));
     for (let i = 0; i < spend; i++) if (game.cmdQueueTroops(cid, 1).err) break;
   }
 
@@ -162,6 +168,7 @@
     if (game.time < 25) return;
     const enemies = game.enemiesOf(cid).filter((e) => !game.isRebel(e));
     const myP = allyPower(game, cid);
+    const weary = c.weary || 0; // savaş yorgunluğu: yüksekse barış ister, yeni savaş açmaz
 
     for (const e of enemies) {
       const war = game.wars.get(game.warKey(cid, e));
@@ -169,7 +176,8 @@
       const dur = game.time - war.since;
       // çok kötü durumdaysa teslim ol
       if (myP < ep * 0.4 && dur > 60 && game.citiesOf(cid).length <= 8 && rnd() < 0.35) { game.cmdSurrender(cid, e); continue; }
-      if ((myP < ep * 0.72 || (dur > 200 && rnd() < 0.25)) && !game.pendingProposal(cid, e, 'peace') && canPingPlayer(game, cid, e)) {
+      const tired = weary > 0.5 && rnd() < weary * 0.6;
+      if ((myP < ep * 0.72 || tired || (dur > 200 && rnd() < 0.25)) && !game.pendingProposal(cid, e, 'peace') && canPingPlayer(game, cid, e)) {
         game.cmdPropose(cid, e, 'peace');
       }
       c.bot.called = c.bot.called || {};
@@ -180,11 +188,11 @@
       const t = +k;
       if (game.warRightState(cid, t).state !== 'ready') continue;
       if (!game.countries[t].alive || game.isAlly(cid, t)) { delete c.warRights[k]; continue; }
-      if (game.power(cid) > game.power(t) * 0.95) {
+      if (game.power(cid) > game.power(t) * 0.95 && weary < 0.4) {
         game.cmdDeclareWar(cid, t);
       } else if (rnd() < 0.2) delete c.warRights[k];
     }
-    if (enemies.length === 0 && game.time > 110 && rnd() < 0.18) {
+    if (enemies.length === 0 && game.time > 110 && weary < 0.25 && rnd() < 0.18) {
       const neigh = game.neighborsOfCountry(cid).filter((x) => !game.isRebel(x) && game.countries[x].alive && !game.isAlly(cid, x) && c.warRights[x] === undefined);
       let best = null, bs = 0;
       for (const n of neigh) {
@@ -261,7 +269,9 @@
         const war = game.wars.get(game.warKey(me, from));
         const dur = war ? game.time - war.since : 0;
         const ratio = allyPower(game, me) / Math.max(1, allyPower(game, from));
-        if (ratio < 0.85) return yes;
+        const w = game.countries[me].weary || 0; // savaştan yorulan halk barış ister
+        if (ratio < 0.85 || w > 0.65) return yes;
+        if (w > 0.35 && r < w) return yes;
         if (dur > 120 && ratio < 1.3 && r < 0.6) return yes;
         if (dur > 260 && r < 0.45) return yes;
         return no('savaşı kazanıyoruz');
