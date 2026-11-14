@@ -54,6 +54,7 @@
       this.selUnit = null;
       this.amountK = 0;
       this.marking = false;
+      this.markArmyId = null;
       this.marked = new Set();
       this.targeting = null;
       this.setupMode = !opts.resumed && game.phase === 'setup' && !game.player.setupDone;
@@ -63,6 +64,7 @@
       this.live = [];
       this.inbox = [];
       this.barKey = '';
+      this.speed = 1;
       this.$ = (id) => document.getElementById(id);
       this.build();
       game.on((ev) => this.onEvent(ev));
@@ -81,8 +83,12 @@
       document.body.classList.toggle('mobile', this.mode === 'mobile');
       this.$('hud').classList.remove('hidden');
       const sb = this.$('sidebar');
-      sb.innerHTML = Object.keys(MENU_TITLES).map((k) =>
-        `<button data-menu="${k}" title="${MENU_TITLES[k]}">${ICONS[k]}<span>${MENU_TITLES[k]}</span></button>`).join('');
+      const keys = Object.keys(MENU_TITLES);
+      sb.innerHTML = keys.map((k, i) =>
+        `<button data-menu="${k}" title="${MENU_TITLES[k]} (${i + 1})" aria-label="${MENU_TITLES[k]}">${ICONS[k]}<span>${MENU_TITLES[k]}</span><kbd>${i + 1}</kbd><i class="sb-dot hidden"></i></button>`).join('');
+      this._sideBtns = [...sb.querySelectorAll('button')];
+      this._sideDots = {};
+      for (const b of this._sideBtns) this._sideDots[b.dataset.menu] = b.querySelector('.sb-dot');
       sb.addEventListener('click', (e) => {
         const b = e.target.closest('button[data-menu]');
         if (b) this.openMenu(b.dataset.menu);
@@ -102,12 +108,49 @@
         if (e.target.id === 'amtRange') { this.amountK = +e.target.value; this.updateBarLive(); }
       });
       this.$('inbox').addEventListener('click', (e) => {
+        const fc = e.target.closest('button[data-focus-from]');
+        if (fc) {
+          const c = g.countries[+fc.dataset.focusFrom];
+          if (c && c.capital >= 0 && this.renderer) {
+            const k = g.cities[c.capital];
+            if (this.renderer.focus) this.renderer.focus(k.x, k.y);
+            else { this.renderer.cam.x = k.x; this.renderer.cam.y = k.y; }
+          }
+          return;
+        }
         const b = e.target.closest('button[data-pid]');
         if (!b) return;
         const r = g.cmdRespond(g.playerId, +b.dataset.pid, b.dataset.ok === '1');
         if (r.err) this.toast(r.err, 'bad');
         this.renderInbox();
       });
+      const spdBox = this.$('spdBox');
+      if (spdBox) {
+        spdBox.classList.toggle('hidden', !!g.mp);
+        spdBox.addEventListener('click', (e) => {
+          const b = e.target.closest('button[data-spd]');
+          if (b) this.setSpeed(+b.dataset.spd);
+        });
+      }
+      const TOP_MENU = { mil: 'military', shop: 'shop', all: 'alliances' };
+      const topbar = this.$('topbar');
+      if (topbar) topbar.addEventListener('click', (e) => {
+        const lk = e.target.closest('[data-top]');
+        if (lk && TOP_MENU[lk.dataset.top]) { this.openMenu(TOP_MENU[lk.dataset.top]); return; }
+        if (e.target.closest('#tbWar')) {
+          const w = g.enemiesOf(p.id).find((x) => !g.isRebel(x));
+          if (w !== undefined) this.diploSel = w;
+          if (this.menu !== 'diplomacy') this.openMenu('diplomacy');
+          else { this.lastHtml = ''; this.renderPanel(); }
+        }
+      });
+    }
+
+    setSpeed(sp) {
+      if (this.game.mp) return;
+      this.speed = sp === 2 || sp === 4 ? sp : 1;
+      const box = this.$('spdBox');
+      if (box) box.querySelectorAll('button[data-spd]').forEach((b) => b.classList.toggle('on', +b.dataset.spd === this.speed));
     }
 
     // Çevrimiçi kurulum: fabrikasını kuran oyuncu diğerlerini bekler (süre dolunca host başkentlere otomatik kurar)
@@ -190,7 +233,7 @@
         const p = g.proposals.find((x) => x.id === id);
         const f = g.countries[p.from];
         return `<div class="letter frame">
-          <div class="lh"><span class="sw" style="background:${f.color}"></span><b>${esc(f.name)}</b> · ${esc(G.PROPOSAL_NAMES[p.type])}</div>
+          <div class="lh"><span class="sw" style="background:${f.color}"></span><b>${esc(f.name)}</b> · ${esc(G.PROPOSAL_NAMES[p.type])}${f.alive && f.capital >= 0 ? `<button type="button" class="btn sm" data-focus-from="${f.id}" title="Ülkeyi haritada göster">◎</button>` : ''}</div>
           <p>${esc(g.describeProposal(p))}</p>
           <div class="lt"><i data-exp="${p.id}"></i></div>
           <div class="lb"><button class="btn ok" data-pid="${p.id}" data-ok="1">Kabul Et</button><button class="btn no" data-pid="${p.id}" data-ok="0">Reddet</button></div>
@@ -211,6 +254,7 @@
       this.selUnit = u ? u.id : null;
       this.amountK = u ? Math.ceil(u.troops / 1000) : 0;
       this.barKey = '';
+      if (this.$('actionBar')) this.updateActionBar();
     }
     cancel() {
       if (this.targeting) {
@@ -220,7 +264,7 @@
         if (t.onCancel) t.onCancel();
         return true;
       }
-      if (this.marking) { this.marking = false; this.marked.clear(); this.barKey = ''; this.updateActionBar(); return true; }
+      if (this.marking) { this.marking = false; this.markArmyId = null; this.marked.clear(); this.barKey = ''; this.updateActionBar(); return true; }
       if (this.selUnit !== null) { this.selectUnit(null); this.updateActionBar(); return true; }
       if (this.menu) { this.openMenu(null); return true; }
       return false;
@@ -249,9 +293,21 @@
       }
       if (this.marking) {
         let u = unit;
-        if (!u && cityId !== null) u = g.idleUnitsAt(cityId).find((x) => x.owner === me);
+        if (this.markArmyId !== null) {
+          const cid = u && u.city !== null ? u.city : cityId;
+          const mine = cid !== null ? g.idleUnitsAt(cid).filter((x) => x.owner === me) : [];
+          if (!u) u = mine.find((x) => x.army !== this.markArmyId) || mine[0];
+          else if (u.army === this.markArmyId) u = mine.find((x) => x.army !== this.markArmyId) || u;
+          if (u && u.owner === me && !u.move && u.army === this.markArmyId) {
+            this.toast('Bu birlik zaten bu orduda', 'info');
+            return;
+          }
+        } else if (!u && cityId !== null) {
+          u = g.idleUnitsAt(cityId).find((x) => x.owner === me);
+        }
         if (u && u.owner === me && !u.move) {
           if (this.marked.has(u.id)) this.marked.delete(u.id); else this.marked.add(u.id);
+          if (this.$('actionBar')) this.updateBarLive();
         }
         return;
       }
@@ -278,11 +334,13 @@
       const g = this.game;
       const bar = this.$('actionBar');
       const sel = this.selectedUnit();
+      const myArmies = g.armies.filter((a) => a.owner === g.playerId);
+      const aSig = myArmies.map((a) => a.id + a.mode).join(',');
       let key = '';
       if (this.setupMode) key = '';
       else if (this.targeting) key = 'target:' + this.targeting.label;
-      else if (this.marking) key = 'mark';
-      else if (sel) key = 'unit:' + sel.id;
+      else if (this.marking) key = 'mark:' + (this.markArmyId || 0) + ':' + aSig;
+      else if (sel) key = 'unit:' + sel.id + ':' + (sel.army || 0) + ':' + aSig;
       if (key !== this.barKey) {
         this.barKey = key;
         bar.classList.toggle('hidden', !key);
@@ -292,17 +350,36 @@
             <div class="bar-row"><b id="pickInfo"></b><button class="btn green" data-bar="pickdone">Tamam</button>${cancelBtn}</div>`;
         } else if (key.startsWith('target')) {
           bar.innerHTML = `<div class="bar-row"><span class="bar-ic">◎</span><span>${esc(this.targeting.label)}</span>${cancelBtn}</div>`;
-        } else if (key === 'mark') {
-          bar.innerHTML = `<div class="bar-row"><span>Orduya katılacak birliklerine tıkla: <b id="markInfo"></b></span></div>
-            <div class="bar-row"><button class="btn red" data-bar="army" data-mode="attack">Taarruz Ordusu Kur</button>
-            <button class="btn blue" data-bar="army" data-mode="defend">Savunma Ordusu Kur</button>${cancelBtn}</div>
-            <small>Taarruz: düşman şehirlerini kendiliğinden işgal eder · Savunma: sınırda kalır, kayıp şehirleri geri alır</small>`;
-        } else if (key.startsWith('unit')) {
+        } else if (key.startsWith('mark:')) {
+          const targetArmy = this.markArmyId ? myArmies.find((a) => a.id === this.markArmyId) : null;
+          if (targetArmy) {
+            bar.innerHTML = `<div class="bar-row"><span><b>${esc(targetArmy.name)}</b> emrine eklenecek birliklerine tıkla: <b id="markInfo"></b></span></div>
+              <div class="bar-row"><button class="btn ${targetArmy.mode === 'attack' ? 'red' : 'blue'}" data-bar="armyadd" data-army="${targetArmy.id}">+ ⚑ ${esc(targetArmy.name)}'na Ekle</button>${cancelBtn}</div>
+              <small>Eklenen birlikler hemen ${esc(targetArmy.name)} emrine girer</small>`;
+          } else {
+            const addBtns = myArmies.map((a) => `<button class="btn sm ${a.mode === 'attack' ? 'red' : 'blue'}" data-bar="armyadd" data-army="${a.id}">+ ${esc(a.name)}'na Ekle</button>`).join('');
+            bar.innerHTML = `<div class="bar-row"><span>Orduya katılacak birliklerine tıkla: <b id="markInfo"></b></span></div>
+              <div class="bar-row"><button class="btn red" data-bar="army" data-mode="attack">Taarruz Ordusu Kur</button>
+              <button class="btn blue" data-bar="army" data-mode="defend">Savunma Ordusu Kur</button>${addBtns}${cancelBtn}</div>
+              <small>Taarruz: düşman şehirlerini kendiliğinden işgal eder · Savunma: sınırda kalır, kayıp şehirleri geri alır</small>`;
+          }
+        } else if (key.startsWith('unit:')) {
           const maxK = Math.max(1, Math.ceil(sel.troops / 1000));
+          const joinBtns = myArmies.filter((a) => a.id !== sel.army)
+            .map((a) => `<button class="btn sm ${a.mode === 'attack' ? 'red' : 'blue'}" data-bar="unitarmy" data-army="${a.id}" title="Seçili miktarı ${esc(a.name)} emrine ekle">+ ⚑ ${esc(a.name)}</button>`).join('');
+          const leaveBtn = sel.army !== null ? '<button class="btn sm" data-bar="unitleave" title="Seçili miktarı ordudan ayır">Ordudan Ayır</button>' : '';
+          const armyRow = (joinBtns || leaveBtn) ? `<div class="bar-row">${joinBtns}${leaveBtn}</div>` : '';
           bar.innerHTML = `<div class="bar-row"><span>Seçili birlik: <b id="selInfo"></b></span>
-            <label class="amt">Taşınacak miktar <input type="range" id="amtRange" min="1" max="${maxK}" step="1" value="${Math.min(this.amountK, maxK)}"> <b id="amtVal"></b></label>${cancelBtn}</div>
+            <label class="amt">Taşınacak miktar <input type="range" id="amtRange" min="1" max="${maxK}" step="1" value="${Math.min(this.amountK, maxK)}"> <b id="amtVal"></b></label>
+            <span class="amt-quick" role="group" aria-label="Hızlı miktar seçimi">
+              <button class="btn sm" data-bar="pct" data-pct="0.25">%25</button>
+              <button class="btn sm" data-bar="pct" data-pct="0.5">%50</button>
+              <button class="btn sm" data-bar="pct" data-pct="0.75">%75</button>
+              <button class="btn sm" data-bar="pct" data-pct="1">Tümü</button>
+            </span>${cancelBtn}</div>${armyRow}
             <small>Hedef şehre ${this.mode === 'pc' ? 'tıkla' : 'dokun'}: kendi şehrin = taşı · komşu düşman = saldır</small>`;
-        } else bar.innerHTML = '';
+          this._pctBtns = [...bar.querySelectorAll('[data-pct]')];
+        } else { bar.innerHTML = ''; this._pctBtns = null; }
       }
       // Her seferinde: seçim iptal edilince (barKey sıfırlanıp yine '' kalınca) çubuk açık kalıyordu
       bar.classList.toggle('hidden', !key);
@@ -312,20 +389,36 @@
     updateBarLive() {
       const g = this.game;
       const sel = this.selectedUnit();
-      if (this.barKey.startsWith('unit') && sel) {
+      if (this.barKey.startsWith('unit:') && sel) {
         const r = this.$('amtRange');
         const maxK = Math.max(1, Math.ceil(sel.troops / 1000));
         if (r && +r.max !== maxK) { r.max = maxK; }
         if (this.amountK > maxK) this.amountK = maxK;
         this._txt('selInfo', `${fmtK(sel.troops)} · ${g.cities[sel.city].name}${sel.weak ? ' · ❗ fabrikaya bağlı değil (−%50)' : ''}`);
         this._txt('amtVal', fmtK(Math.min(sel.troops, this.amountK * 1000)));
+        const q = this._pctBtns;
+        if (q) for (let i = 0; i < q.length; i++) {
+          const pct = +q[i].dataset.pct;
+          const target = pct >= 1 ? maxK : Math.max(1, Math.min(maxK, Math.round(maxK * pct)));
+          q[i].classList.toggle('on', this.amountK === target);
+        }
       } else if (this.barKey.startsWith('target') && this.targeting && this.targeting.info) {
         this._txt('pickInfo', this.targeting.info());
-      } else if (this.barKey === 'mark') {
+      } else if (this.barKey.startsWith('mark:')) {
         let t = 0;
         for (const id of this.marked) { const u = g.units.find((x) => x.id === id && !x.dead); if (u) t += u.troops; else this.marked.delete(id); }
         this._txt('markInfo', `${this.marked.size} birlik · ${fmtK(t)}`);
       }
+    }
+    setSplitPct(pct) {
+      const sel = this.selectedUnit();
+      if (!sel) return false;
+      const maxK = Math.max(1, Math.ceil(sel.troops / 1000));
+      this.amountK = pct >= 1 ? maxK : Math.max(1, Math.min(maxK, Math.round(maxK * pct)));
+      const r = this.$('amtRange');
+      if (r) r.value = this.amountK;
+      this.updateBarLive();
+      return true;
     }
     onBarClick(e) {
       const b = e.target.closest('[data-bar]');
@@ -338,11 +431,36 @@
         this.updateActionBar();
         if (t.done) t.done();
       }
+      else if (b.dataset.bar === 'pct') this.setSplitPct(+b.dataset.pct);
       else if (b.dataset.bar === 'army') {
         const r = g.cmdCreateArmy(g.playerId, [...this.marked], b.dataset.mode);
         if (r.err) { this.toast(r.err, 'bad'); return; }
         this.toast(`${r.army.name} kuruldu (${b.dataset.mode === 'attack' ? 'Taarruz' : 'Savunma'})`, 'good');
-        this.marking = false; this.marked.clear(); this.barKey = '';
+        this.marking = false; this.markArmyId = null; this.marked.clear(); this.barKey = '';
+        if (this.$('actionBar')) this.updateActionBar();
+        this.lastHtml = ''; if (this.menu === 'military') this.renderPanel();
+      } else if (b.dataset.bar === 'armyadd') {
+        const armyId = +b.dataset.army || this.markArmyId;
+        const r = g.cmdAddUnitsToArmy(g.playerId, armyId, [...this.marked]);
+        if (r.err) { this.toast(r.err, 'bad'); return; }
+        this.toast(`Seçili birlikler ${r.army.name}'na eklendi`, 'good');
+        this.marking = false; this.markArmyId = null; this.marked.clear(); this.barKey = '';
+        if (this.$('actionBar')) this.updateActionBar();
+        this.lastHtml = ''; if (this.menu === 'military') this.renderPanel();
+      } else if (b.dataset.bar === 'unitarmy') {
+        const sel = this.selectedUnit(); if (!sel) return;
+        const amount = Math.min(sel.troops, this.amountK * 1000);
+        const r = g.cmdAddUnitsToArmy(g.playerId, +b.dataset.army, [sel.id], amount >= sel.troops - 1 ? undefined : amount);
+        if (r.err) { this.toast(r.err, 'bad'); return; }
+        this.toast(`${fmtK(amount)} asker ${r.army.name}'na eklendi`, 'good');
+        this.selectUnit(null); this.lastHtml = ''; if (this.menu === 'military') this.renderPanel();
+      } else if (b.dataset.bar === 'unitleave') {
+        const sel = this.selectedUnit(); if (!sel) return;
+        const amount = Math.min(sel.troops, this.amountK * 1000);
+        const r = g.cmdRemoveUnitFromArmy(g.playerId, sel.id, amount >= sel.troops - 1 ? undefined : amount);
+        if (r.err) { this.toast(r.err, 'bad'); return; }
+        this.toast(`${fmtK(amount)} asker ordudan ayrıldı`, 'info');
+        this.selectUnit(null); this.lastHtml = ''; if (this.menu === 'military') this.renderPanel();
       }
     }
 
@@ -356,7 +474,19 @@
       this._txt('tbIncTxt', `+${g.incomeOf(p.id)}₺ / ${G.CFG.incomeInterval} sn`);
       this._txt('tbTroops', fmtK(g.totalTroops(p.id)) + (p.queue ? ` (+${p.queue}k)` : ''));
       this._txt('tbFac', String(f));
-      this._txt('tbCities', String(g.citiesOf(p.id).length));
+      const counts = this._cntBuf || (this._cntBuf = new Int16Array(12));
+      counts.fill(0);
+      for (let i = 0; i < g.cities.length; i++) {
+        const ow = g.cities[i].owner;
+        if (ow >= 0 && ow < 12) counts[ow]++;
+      }
+      const myCities = counts[p.id];
+      let rank = 1;
+      for (let i = 0; i < g.countries.length; i++) {
+        const c = g.countries[i];
+        if (c.alive && !c.isRebel && !c.absent && c.id !== p.id && (counts[c.id] > myCities || (counts[c.id] === myCities && c.id < p.id))) rank++;
+      }
+      this._txt('tbCities', `${myCities} (#${rank})`);
       this._txt('tbTime', fmtTime(g.time));
       const bl = p.blitzUntil - g.time;
       const blOn = bl > 0;
@@ -370,6 +500,31 @@
         this._topMenu = this.menu;
         const btns = this._sideBtns || (this._sideBtns = [...document.querySelectorAll('#sidebar button')]);
         for (let i = 0; i < btns.length; i++) btns[i].classList.toggle('active', btns[i].dataset.menu === this.menu);
+      }
+      if (this._sideDots) {
+        let dipOn = warOn || this.inbox.length > 0;
+        if (!dipOn) {
+          for (let i = 0; i < g.countries.length; i++) {
+            const c = g.countries[i];
+            if (!c.alive || c.isRebel || c.isPlayer || c.absent) continue;
+            if (g.warRightState(p.id, c.id).state === 'ready') { dipOn = true; break; }
+          }
+        }
+        if (this._dipDot !== dipOn) {
+          this._dipDot = dipOn;
+          const d = this._sideDots.diplomacy;
+          if (d) { d.classList.toggle('hidden', !dipOn); d.classList.toggle('war', warOn); }
+        }
+        let hasWeak = false;
+        for (let i = 0; i < g.units.length; i++) {
+          const u = g.units[i];
+          if (!u.dead && u.owner === p.id && u.weak) { hasWeak = true; break; }
+        }
+        if (this._milDot !== hasWeak) {
+          this._milDot = hasWeak;
+          const d = this._sideDots.military;
+          if (d) { d.classList.toggle('hidden', !hasWeak); d.classList.add('warn'); }
+        }
       }
       // gelen teklif süreleri
       if (g.proposals.length) {
@@ -408,9 +563,29 @@
       if (c.building.length) struct.push(`🏗 ${c.building.length} fabrika inşaatta`);
       if (c.cityDef) struct.push('şehir savunması');
       if (c.airDef) struct.push('hava koruma');
+      const defM = g.defMult(c.owner, c);
+      if (defM > 1.005) struct.push(`🛡 ×${defM.toFixed(2)}`);
+      const sel = this.selUnit !== null ? this.selectedUnit() : null;
+      let actHint = '';
+      if (sel && cityId !== sel.city) {
+        if (g.friendly(sel.owner, c.owner)) actHint = '<div class="tt-hint ok">✓ Tıkla: destek / taşı</div>';
+        else if (g.hostile(sel.owner, c.owner) && g.cities[sel.city].neighbors.includes(cityId)) {
+          const send = Math.min(sel.troops, this.amountK * 1000);
+          const atkM = g.unitAtk(sel, c.owner);
+          const defT = units.reduce((sum, u) => sum + (g.friendly(u.owner, c.owner) ? u.troops : 0), 0);
+          if (defT <= 0) actHint = '<div class="tt-hint ok">⚔ Tıkla: saldır (boş şehir)</div>';
+          else {
+            const ratio = (send * atkM) / (defT * defM);
+            const tag = ratio >= 1.25 ? 'avantajlı' : ratio >= 0.85 ? 'denk' : 'riskli';
+            actHint = `<div class="tt-hint atk">⚔ Tıkla: saldır (${fmtK(send)} ×${atkM.toFixed(2)} vs ${fmtK(defT)} ×${defM.toFixed(2)} · ${tag})</div>`;
+          }
+        }
+        else if (!g.hostile(sel.owner, c.owner) && !o.isRebel) actHint = '<div class="tt-hint">⚠ Saldırı için önce savaş ilan et</div>';
+        else actHint = '<div class="tt-hint">✗ Sınır komşusu değil</div>';
+      }
       const html = `<div class="tt-h">${isCap ? '★ ' : ''}${esc(c.name)}</div>
         <div class="tt-o"><span class="sw" style="background:${o.color}"></span>${esc(o.name)}${isCap ? ' · başkent' : ''}${g.isBorderCity(cityId) ? ' · sınır' : ''}</div>
-        ${troops}${struct.length ? `<div class="tt-s">${struct.join(' · ')}</div>` : ''}${inc ? `<div class="tt-w">⚔︎ saldırı altında!</div>` : ''}${units.some((u) => u.weak) ? `<div class="tt-w">❗ Fabrikaya bağlı değil: asker −%50</div>` : ''}`;
+        ${troops}${struct.length ? `<div class="tt-s">${struct.join(' · ')}</div>` : ''}${inc ? `<div class="tt-w">⚔︎ saldırı altında!</div>` : ''}${units.some((u) => u.weak) ? `<div class="tt-w">❗ Fabrikaya bağlı değil: asker −%50</div>` : ''}${actHint}`;
       const changed = html !== this._tipHtml || this._tipHidden !== false;
       if (changed) {
         if (html !== this._tipHtml) { tip.innerHTML = html; this._tipHtml = html; }
@@ -529,12 +704,17 @@
         .sort((a, b) => rank(a) - rank(b) || g.rel[me][b.id] - g.rel[me][a.id] || a.id - b.id);
       if (!others.some((c) => c.id === this.diploSel)) this.diploSel = others.length ? others[0].id : null;
       const nbrs = new Set(g.neighborsOfCountry(me));
+      const cnts = this._cntBuf || (this._cntBuf = new Int16Array(12));
+      cnts.fill(0);
+      for (let i = 0; i < g.cities.length; i++) { const ow = g.cities[i].owner; if (ow >= 0 && ow < 12) cnts[ow]++; }
       const human = (c) => (g.mp && c.isHuman ? '<i class="hm" title="Gerçek oyuncu">👤</i>' : '');
       const list = others.map((c) => {
         const st = c.alive ? this.relStatus(me, c.id) : { t: 'Yıkıldı', c: 'dead' };
-        const sub = !c.alive ? 'yıkıldı' : st.c === 'war' ? '⚔ savaşta' : st.c === 'ally' ? '🤝 müttefik' : this.relWord(g.rel[me][c.id]);
+        const rv = g.rel[me][c.id];
+        const sub = !c.alive ? 'yıkıldı' : st.c === 'war' ? '⚔ savaşta' : st.c === 'ally' ? '🤝 müttefik' : this.relWord(rv);
+        const rBadge = c.alive ? `<small class="rl-s ${rv >= 25 ? 'pos' : rv <= -25 ? 'neg' : ''}">${rv > 0 ? '+' : ''}${rv}</small>` : '';
         return `<li data-act="dsel" data-id="${c.id}" tabindex="0" role="button" aria-pressed="${this.diploSel === c.id}" class="${this.diploSel === c.id ? 'sel' : ''} ${st.c}">${this.seal(c)}
-          <span class="nm"><b>${esc(c.name)}${human(c)}</b><small>${sub}${c.alive && nbrs.has(c.id) ? ' · komşu' : ''}</small></span></li>`;
+          <span class="nm"><b>${esc(c.name)}${human(c)}</b><small>${sub}${c.alive ? ` · ${cnts[c.id]} şehir` : ''}${c.alive && nbrs.has(c.id) ? ' · komşu' : ''}</small></span>${rBadge}</li>`;
       }).join('');
       let info = '<div class="empty">Diplomasi kuracak ülke yok.</div>';
       const t = this.diploSel !== null ? g.countries[this.diploSel] : null;
@@ -549,7 +729,11 @@
           return `<button class="btn ${opts.cls || ''}" data-act="${act}" data-id="${id}" ${opts.dis ? 'disabled' : ''} title="${esc(opts.title || '')}">${label}</button>`;
         };
         const tags = [`<span class="chip ${st.c}">${st.t}</span>`];
-        if (t.alive) tags.push(`<span class="tag">${esc(g.ideo(id).name)}</span>`);
+        if (t.alive) {
+          const tDef = (1 + t.defLvl * G.CFG.upgradeStep) * g.ideo(id).def;
+          tags.push(`<span class="tag">${esc(g.ideo(id).name)}</span>`);
+          tags.push(`<span class="tag">⚔ ×${g.atkMult(id, me).toFixed(2)} · 🛡 ×${tDef.toFixed(2)}</span>`);
+        }
         if (al) tags.push(`<span class="tag al">⚑ ${esc(al.name)}</span>`);
         if (g.mp && t.isHuman) tags.push(`<span class="tag">👤 Oyuncu${t.isBot ? ' (bağlantı yok)' : ''}</span>`);
         if (t.alive && nbrs.has(id)) tags.push('<span class="tag">Sınır komşusu</span>');
@@ -570,6 +754,12 @@
           const vs = (label, mine, theirs, fmt) => `<div class="vs"><div class="vs-h"><span>${this.L(() => fmt(mine()))}</span><small>${label}</small><span>${this.L(() => fmt(theirs()))}</span></div>
             <div class="vs-bar" style="--a:${P.color};--b:${t.color}">${this.LW(() => { const a = mine(), b = theirs(); return a + b > 0 ? (a / (a + b)) * 100 : 50; })}</div></div>`;
           const cnt = (k) => () => { let n = 0; for (const c of g.cities) if (c.owner === k) n++; return n; };
+          const statsRow = `<div class="dp-stats">
+            <div><span>Şehir</span><b>${this.L(() => String(cnt(id)()))}</b></div>
+            <div><span>Asker</span><b>${this.L(() => fmtK(g.totalTroops(id)))}</b></div>
+            <div><span>Fabrika</span><b>${this.L(() => String(g.factoriesOf(id)))}</b></div>
+            <div><span>Hazine</span><b>${this.L(() => fmtMoney(t.money))}</b></div>
+          </div>`;
           const power = `<div class="dcard"><h5>Güç dengesi <small>— sen ⟷ ${esc(t.name)}</small></h5>
             ${vs('Asker', () => g.totalTroops(me), () => g.totalTroops(id), fmtK)}
             ${vs('Şehir', cnt(me), cnt(id), String)}
@@ -609,7 +799,7 @@
           if (myAl) pact = ally ? B('leave', `İttifaktan Ayrıl · ${fmtMoney(lvPrice)}`, { dis: P.money < lvPrice }) : `<span class="muted">Zaten ${esc(myAl.name)} ittifakındasın.</span>`;
           else if (al) pact = B('alliance', `⚑ Katılma Talebi · ${fmtMoney(alPrice)}`, { dis: war || P.money < alPrice, title: `${al.name}: tüm üyeler onaylamalı` });
           else pact = B('alliance', `🤝 İttifak Teklif Et · ${fmtMoney(alPrice)}`, { dis: war || !!g.pendingProposal(me, id, 'alliance') || P.money < alPrice });
-          body = `${relm}${pendHtml}
+          body = `${statsRow}${relm}${pendHtml}
             <div class="dcards">
               <div class="dcard ${war ? 'war' : ''}"><h5>Savaş ve barış</h5>${conflict}</div>
               ${deals}
@@ -653,7 +843,9 @@
               <div class="qbtns"><button class="btn round" data-act="q" data-dir="-1" ${P.queue <= 0 ? 'disabled' : ''} title="Sıradan 1k çıkar">−</button>
                 <button class="btn green" data-act="q" data-dir="1" data-n="1" ${P.money < tp ? 'disabled' : ''}>+1k</button>
                 <button class="btn green" data-act="q" data-dir="1" data-n="5" ${P.money < tp ? 'disabled' : ''}>+5k</button>
-                <button class="btn green" data-act="q" data-dir="1" data-n="10" ${P.money < tp ? 'disabled' : ''}>+10k</button></div>
+                <button class="btn green" data-act="q" data-dir="1" data-n="10" ${P.money < tp ? 'disabled' : ''}>+10k</button>
+                <button class="btn green" data-act="q" data-dir="1" data-n="max" ${P.money < tp ? 'disabled' : ''} title="Paranın yettiği kadar sıraya ekle">+Maks</button>
+                ${P.queue > 0 ? '<button class="btn sm" data-act="qclear" title="Tüm üretim sırasını temizle (ücret iade edilmez)">✕</button>' : ''}</div>
               <button class="tgl ${P.autoDist ? 'on' : ''}" data-act="autodist" role="switch" aria-checked="${!!P.autoDist}"
                 title="Açıkken üretilen askerler başkentte kalmaz; önce saldırı altındaki, sonra savaştığın ülkeye sınır olan, en az askeri olan şehre yürür.">
                 <span class="tgl-track"><i></i></span><span class="tgl-l">Sınırlara dağıt</span><span class="tgl-ar">»</span></button>
@@ -688,11 +880,12 @@
           <small class="ar-s">${this.L(() => { const l = us(); const f = l.filter((u) => u.move && (u.move.kind === 'battle' || u.move.kind === 'attack')).length; const n = new Set(l.filter((u) => u.city !== null).map((u) => u.city)).size; return `${n} şehirde${f ? ` · ${f} çatışmada` : ''}`; })}</small>
           <div class="ar-b"><div class="mode2"><button class="${a.mode === 'attack' ? 'on' : ''}" data-act="amode" data-id="${a.id}" data-mode="attack">⚔ Taarruz</button>
             <button class="${a.mode === 'defend' ? 'on' : ''}" data-act="amode" data-id="${a.id}" data-mode="defend">🛡 Savunma</button></div>
+            <button class="btn sm" data-act="aadd" data-id="${a.id}" title="Haritadan birlik seçip bu orduya ekle">+ Birlik</button>
             <button class="btn sm" data-act="afocus" data-id="${a.id}" title="Haritada göster">◎</button>
             <button class="btn sm" data-act="adisband" data-id="${a.id}" title="Ordunu dağıt">✕</button></div></div>`;
       };
       const armySect = `<div class="mcard"><div class="mc-h">${icon('flag')}<b>Ordular</b><button class="btn sm" data-act="mark">+ Ordu Kur</button></div>
-        ${armies.length ? `<div class="army-grid">${armies.map(armyCard).join('')}</div><small class="note">Ordunun bulunduğu şehre gönderdiğin askerler orduya katılır.</small>`
+        ${armies.length ? `<div class="army-grid">${armies.map(armyCard).join('')}</div><small class="note"><b>+ Birlik</b> veya birlik seçiliyken alttaki <b>+ ⚑ Ordu</b> düğmesiyle sonradan birlik ekleyebilirsin; ordunun şehrine giden askerler de katılır.</small>`
           : '<div class="army-empty">Ordular kendi kendine savaşır: <b>Taarruz</b> ordusu düşman şehirlerini işgal eder, <b>Savunma</b> ordusu sınırlarını korur ve kaybedilen şehirleri geri alır. <b>+ Ordu Kur</b>\'a bas, birliklerini haritada işaretle.</div>'}</div>`;
       const tap = this.mode === 'pc' ? 'tıkla' : 'dokun';
       return `<div class="mil scroll">${warn}${hero}${prod}${equip}${ideoSect}${armySect}
@@ -707,12 +900,15 @@
         .map((c) => ({ c, n: cityCount(c.id) }))
         .sort((a, b) => (b.c.alive - a.c.alive) || b.n - a.n || a.c.id - b.c.id);
       const maxN = Math.max(1, ...rows.map((r) => r.n));
+      const totN = Math.max(1, g.cities.length);
       const ranking = rows.map((r, i) => {
         const c = r.c, st = c.isPlayer ? { c: 'me' } : c.alive ? this.relStatus(me, c.id) : { c: 'dead' };
-        return `<li class="${st.c}"><span class="rk">${c.alive ? i + 1 : '☠'}</span>${this.seal(c, 'sm')}
+        const act = c.isPlayer ? '' : ` data-act="dopen" data-id="${c.id}" tabindex="0" role="button" title="${esc(c.name)} diplomasisini aç"`;
+        const pct = Math.round((r.n / totN) * 100);
+        return `<li class="${st.c}"${act}><span class="rk">${c.alive ? i + 1 : '☠'}</span>${this.seal(c, 'sm')}
           <span class="rk-n"><b>${esc(c.name)}${c.isPlayer ? ' <small>(sen)</small>' : ''}</b>
           <span class="rk-bar"><i style="width:${(r.n / maxN) * 100}%;background:${c.color}"></i></span></span>
-          <small class="rk-v">${c.alive ? `${r.n} şehir · ${this.L(() => fmtK(g.totalTroops(c.id)))}` : 'yıkıldı'}</small></li>`;
+          <small class="rk-v">${c.alive ? `${r.n} (%${pct}) · ${this.L(() => fmtK(g.totalTroops(c.id)))}` : 'yıkıldı'}</small></li>`;
       }).join('');
       const myAlId = g.countries[me].allianceId;
       const als = g.alliances.slice().sort((a, b) => (b.id === myAlId) - (a.id === myAlId)).map((al) => {
@@ -750,6 +946,7 @@
         { t: 'Savunma', ic: 'shield', cls: 'def', keys: ['cityDef', 'airDef'] },
       ];
       const count = (f) => { let n = 0; for (const c of g.cities) if (c.owner === me && f(c)) n++; return n; };
+      const hasFacSlot = g.cities.some((c) => c.owner === me && g.factorySlots(c) < g.factoryLimit(me));
       const card = (it, cls) => {
         const pr = g.price(me, it.key);
         let extra = '', dis = P.money < pr, note = '', badge = '';
@@ -771,12 +968,14 @@
         }
         const need = P.money < pr && !badge ? `<span class="need">${fmtMoney(Math.round((pr - P.money) * 100) / 100)} eksik</span>` : '';
         const label = it.target && it.target !== 'country' ? (it.key === 'missile' ? 'Hedef Seç' : 'Şehir Seç') : 'Satın Al';
+        const quickFac = it.key === 'factory' && !dis && hasFacSlot
+          ? '<button class="btn sm green" data-act="autobuyfac" title="En güvenli uygun şehre hemen fabrika kur">⚡ Hızlı Kur</button>' : '';
         return `<div class="sitem ${cls} ${dis ? 'dis' : ''}">
           <div class="si-top"><span class="si-ic">${icon(SHOP_ICON[it.key])}</span>
             <div class="si-t"><b>${it.name}</b>${badge ? `<span class="badge">${badge}</span>` : ''}</div>
             <span class="price">${fmtMoney(pr)}${pr !== G.PRICES[it.key] ? ` <s>${fmtMoney(G.PRICES[it.key])}</s>` : ''}</span></div>
           <p>${it.desc}</p>${note ? `<small class="si-note">${note}</small>` : ''}${extra}
-          <div class="si-f">${need}<button class="btn sm" data-act="buy" data-item="${it.key}" ${dis ? 'disabled' : ''}>${label}</button></div></div>`;
+          <div class="si-f">${need}${quickFac}<button class="btn sm" data-act="buy" data-item="${it.key}" ${dis ? 'disabled' : ''}>${label}</button></div></div>`;
       };
       const inc = g.incomeOf(me);
       const ideo = g.ideo(me);
@@ -799,11 +998,13 @@
       const res = (r, okMsg) => { if (r && r.err) this.toast(r.err, 'bad'); else if (okMsg) this.toast(okMsg, 'good'); this.lastHtml = ''; this.renderPanel(); };
       switch (b.dataset.act) {
         case 'dsel': this.diploSel = id; this.lastHtml = ''; this.renderPanel(); break;
+        case 'dopen': this.diploSel = id; this.openMenu('diplomacy'); break;
         case 'dfocus': {
           const c = g.countries[id];
           if (c && c.capital >= 0 && this.renderer) {
             const k = g.cities[c.capital];
-            this.renderer.cam.x = k.x; this.renderer.cam.y = k.y;
+            if (this.renderer.focus) this.renderer.focus(k.x, k.y);
+            else { this.renderer.cam.x = k.x; this.renderer.cam.y = k.y; }
             this.renderer.fx.push({ kind: 'capture', x: k.x, y: k.y, t0: performance.now(), dur: 1400 });
             if (this.mode === 'mobile') this.openMenu(null);
           }
@@ -819,12 +1020,20 @@
         case 'join': res(g.cmdJoinRequest(me, id), 'Katılma başvurusu tüm üyelere gönderildi.'); break;
         case 'leave': res(g.cmdLeaveAlliance(me), 'İttifaktan ayrıldın.'); break;
         case 'q': {
-          // +1k / +5k / +10k: parası yettiği kadar sıraya ekler
-          const n = Math.max(1, +b.dataset.n || 1), dir = +b.dataset.dir;
+          // +1k / +5k / +10k / +Maks: parası yettiği kadar sıraya ekler
+          const tp = g.price(me, 'troop');
+          const n = b.dataset.n === 'max' ? Math.max(1, Math.min(500, Math.floor(g.player.money / tp))) : Math.max(1, +b.dataset.n || 1);
+          const dir = +b.dataset.dir;
           let r = null, done = 0;
           for (let i = 0; i < n; i++) { r = g.cmdQueueTroops(me, dir); if (r.err) break; done++; }
-          if (done > 0 && n > 1 && r && r.err) this.toast(`Para yettiği kadar sıraya eklendi: +${done}k`, 'info');
+          if (done > 0 && b.dataset.n === 'max') this.toast(`+${done}k asker sıraya eklendi`, 'good');
+          else if (done > 0 && n > 1 && r && r.err) this.toast(`Para yettiği kadar sıraya eklendi: +${done}k`, 'info');
           res(done > 0 ? { ok: true } : r);
+          break;
+        }
+        case 'qclear': {
+          while (g.player.queue > 0) { const r = g.cmdQueueTroops(me, -1); if (r.err) break; }
+          res({ ok: true }, 'Üretim sırası temizlendi.');
           break;
         }
         case 'autodist': {
@@ -842,23 +1051,49 @@
           break;
         }
         case 'mark':
-          this.selectUnit(null); this.targeting = null; this.marking = true; this.marked.clear(); this.barKey = '';
+          this.selectUnit(null); this.targeting = null; this.marking = true; this.markArmyId = null; this.marked.clear(); this.barKey = '';
+          if (this.$('actionBar')) this.updateActionBar();
+          if (this.mode === 'mobile') this.openMenu(null);
+          break;
+        case 'aadd':
+          this.selectUnit(null); this.targeting = null; this.marking = true; this.markArmyId = id; this.marked.clear(); this.barKey = '';
+          if (this.$('actionBar')) this.updateActionBar();
           if (this.mode === 'mobile') this.openMenu(null);
           break;
         case 'amode': res(g.cmdArmyMode(me, id, b.dataset.mode)); break;
         case 'adisband': res(g.cmdDisbandArmy(me, id), 'Ordu dağıtıldı.'); break;
         case 'afocus': {
           const u = g.units.find((x) => x.army === id && !x.dead);
-          if (u && this.renderer) { const [x, y] = g.unitPos(u); this.renderer.cam.x = x; this.renderer.cam.y = y; }
+          if (u && this.renderer) {
+            const [x, y] = g.unitPos(u);
+            if (this.renderer.focus) this.renderer.focus(x, y);
+            else { this.renderer.cam.x = x; this.renderer.cam.y = y; }
+          }
           break;
         }
         case 'buy': this.buy(b.dataset.item); break;
+        case 'autobuyfac': {
+          const lim = g.factoryLimit(me);
+          const avail = g.cities.filter((c) => c.owner === me && g.factorySlots(c) < lim);
+          if (!avail.length) { this.toast('Fabrika kuracak boş şehrin yok', 'bad'); break; }
+          const cutIds = new Set(g.cutOffCities(me).map((c) => c.id));
+          const enemyNbr = (c) => { let k = 0; for (const n of c.neighbors) if (g.hostile(me, g.cities[n].owner)) k++; return k; };
+          avail.sort((a, b) => (cutIds.has(b.id) - cutIds.has(a.id))
+            || g.incomingAttacks(a.id).length - g.incomingAttacks(b.id).length
+            || enemyNbr(a) - enemyNbr(b)
+            || g.factorySlots(a) - g.factorySlots(b)
+            || a.id - b.id);
+          const best = avail[0];
+          res(g.cmdBuy(me, 'factory', { city: best.id }), `${best.name} şehrinde fabrika inşa ediliyor (${G.CFG.factoryBuildTime} sn).`);
+          break;
+        }
         case 'cutfocus': {
           const cut = g.cutOffCities(me);
           if (cut.length && this.renderer) {
             this.cutIdx = ((this.cutIdx || 0) + 1) % cut.length;
             const c = cut[this.cutIdx];
-            this.renderer.cam.x = c.x; this.renderer.cam.y = c.y;
+            if (this.renderer.focus) this.renderer.focus(c.x, c.y);
+            else { this.renderer.cam.x = c.x; this.renderer.cam.y = c.y; }
             if (this.mode === 'mobile') this.openMenu(null);
           }
           break;
@@ -1061,10 +1296,11 @@
 
     dialog(title, body, buttons, wide, extra) {
       const layer = this.$('dialog');
-      layer.innerHTML = `<div class="dlg frame ${wide ? 'wide' : ''}"><h3>${title}</h3><div class="dlg-b">${body}</div>
+      layer.innerHTML = `<div class="dlg frame ${wide ? 'wide' : ''}" role="dialog" aria-modal="true" aria-labelledby="dlgTitle"><h3 id="dlgTitle">${title}</h3><div class="dlg-b">${body}</div>
         <div class="dlg-f">${buttons.map((b, i) => `<button class="btn ${b.cls || ''}" data-i="${i}">${b.label}</button>`).join('')}</div></div>`;
       layer.classList.remove('hidden');
       document.body.classList.add('dialog-open');
+      layer.oninput = null;
       layer.onclick = (e) => {
         if (extra && extra(e)) return;
         const b = e.target.closest('button[data-i]');
@@ -1076,7 +1312,7 @@
       };
     }
     closeDialog() {
-      const l = this.$('dialog'); l.classList.add('hidden'); l.innerHTML = ''; document.body.classList.remove('dialog-open');
+      const l = this.$('dialog'); l.classList.add('hidden'); l.oninput = null; l.innerHTML = ''; document.body.classList.remove('dialog-open');
       this.paused = false; // oyun menüsü / yardım kapanınca (tek oyunculuda) oyun devam eder
     }
     dialogOpen() { return !this.$('dialog').classList.contains('hidden'); }
@@ -1086,12 +1322,20 @@
       const g = this.game;
       if (this.dialogOpen()) return;
       const sp = !g.mp;
+      const mPct = G.Audio ? Math.round(G.Audio.musicVol * 100) : 60;
+      const sPct = G.Audio ? Math.round(G.Audio.sfxVol * 100) : 85;
+      const volBox = G.Audio ? `<div class="gm-vols">
+          <label><span>🎵 Müzik</span><input type="range" id="gmMusic" min="0" max="100" value="${mPct}"><b id="gmMusicV">${mPct}%</b></label>
+          <label><span>🔔 Efekt</span><input type="range" id="gmSfx" min="0" max="100" value="${sPct}"><b id="gmSfxV">${sPct}%</b></label>
+        </div>` : '';
       const body = `<div class="gm">
           ${sp ? '<p class="gm-paused">Oyun duraklatıldı. Zaman akmıyor.</p>' : `<p class="note">Çevrimiçi oyun duraklatılamaz${this.netCode ? ` · Oda <b>${esc(this.netCode)}</b>` : ''}.</p>`}
           <button class="btn big green" data-gm="resume">▶ Devam Et</button>
           <button class="btn" data-gm="sound">${G.Audio && G.Audio.muted ? '🔇 Ses kapalı — aç' : '🔊 Ses açık — kapat'}</button>
+          ${volBox}
           <button class="btn" data-gm="help">📖 Nasıl Oynanır</button>
           <button class="btn red" data-gm="menu">🏠 Ana Menüye Dön</button>
+          ${this.mode !== 'mobile' ? '<p class="gm-keys"><b>Kısayollar:</b> WASD kamera · 1–4 menüler · Boşluk başkent · Q iptal · P duraklat · M ses</p>' : ''}
           <p class="gm-info">${esc(g.player.name)} · ${esc(((G.MapGen.TYPES.find((t) => t.key === g.mapType)) || { name: 'Kıta' }).name)} haritası · ${fmtTime(g.time)} · Control-LGS ${G.VERSION_LABEL}</p></div>`;
       this.dialog(sp ? '⏸ Duraklatıldı' : '☰ Oyun Menüsü', body, [], false, (e) => {
         const b = e.target.closest('[data-gm]');
@@ -1103,6 +1347,11 @@
         else if (a === 'menu') this.confirmMainMenu();
         return true;
       });
+      this.$('dialog').oninput = (e) => {
+        if (!G.Audio) return;
+        if (e.target.id === 'gmMusic') { G.Audio.setMusic(e.target.value / 100); this._txt('gmMusicV', e.target.value + '%'); }
+        else if (e.target.id === 'gmSfx') { G.Audio.setSfx(e.target.value / 100); this._txt('gmSfxV', e.target.value + '%'); }
+      };
       this.paused = sp;
     }
     openHelp(back) {
@@ -1214,7 +1463,7 @@
     <section><h4>🤝 Diplomasi</h4><p>Talep, destek ve takas teklif et; ittifak kur ya da bir ittifaka katıl; barış teklif et ya da teslim ol.
       İlişkiler tekliflerin kabul edilme şansını etkiler. Müttefiklerini savaşa çağırabilirsin.</p></section>
     <section><h4>🎖 Askeri yönetim ve mağaza</h4><p>Asker üret (+1k = 1₺), <b>Sınırlara dağıt</b> ile yeni askerleri cepheye yolla, saldırı/savunma geliştir,
-      ideolojine özel geliştirmeleri al, ordu kur (ordunun şehrine gelen askerler orduya katılır). Mağazada fabrika, blitzkrieg, uçak, füze, isyan ve savunmalar var.</p></section>
+      ideolojine özel geliştirmeleri al, ordu kur. Mevcut orduya <b>+ Birlik</b> düğmesiyle, birlik seçiliyken alttaki ordu düğmeleriyle veya ordunun şehrine asker göndererek sonradan birlik ekleyebilirsin. Mağazada fabrika, blitzkrieg, uçak, füze, isyan ve savunmalar var.</p></section>
     <section><h4>🗺 Haritalar</h4><p>Kıta, Pangea, Takımadalar, İç Deniz, İkiz Kıtalar ya da Rastgele. Takımadalarda ve ikiz kıtalarda
       dar kara köprüleri kilit noktalardır; köprüyü tutan, karşı kıyıya geçişi tutar.</p></section>
     <section><h4>🌐 Çevrimiçi</h4><p>Giriş ekranında <b>Oda Kur</b> ile 5 harfli bir kod al, arkadaşların kodla katılsın. Harita oyuncu sayısına göre oluşur.

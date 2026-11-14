@@ -111,10 +111,14 @@
         <ul>${d.perks.map((p) => `<li>${p}</li>`).join('')}</ul>
         ${G.IDEO_UP && G.IDEO_UP[d.key] ? `<div class="ideo-sp"><span>Özel geliştirmeler</span>${G.IDEO_UP[d.key].map((x) => `<i title="${x.desc}">${x.name}</i>`).join('')}</div>` : ''}
       </button>`).join('');
+    try { const si = localStorage.getItem('hc_ideo'); if (si && G.IDEO[si]) startState.ideology = si; } catch (e) { /* yok */ }
+    const syncIdeo = () => ideoBox.querySelectorAll('.ideo').forEach((x) => { const on = x.dataset.k === startState.ideology; x.classList.toggle('on', on); x.setAttribute('aria-pressed', String(on)); });
+    syncIdeo();
     ideoBox.addEventListener('click', (e) => {
       const b = e.target.closest('.ideo'); if (!b) return;
       startState.ideology = b.dataset.k;
-      ideoBox.querySelectorAll('.ideo').forEach((x) => { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', String(x === b)); });
+      syncIdeo();
+      try { localStorage.setItem('hc_ideo', startState.ideology); } catch (err) { /* yok */ }
       validate();
     });
     // harita seçimi
@@ -143,6 +147,19 @@
     syncMode();
     $('nameIn').addEventListener('input', validate);
     $('nameIn').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !$('startBtn').disabled) start(null); });
+    const RAND_NAMES = [
+      'Altın Orda', 'Rumeli Beyliği', 'Kızıl Elma', 'Demir Taht', 'Anadolu Hanlığı',
+      'Boğaz İmparatorluğu', 'Tuna Despotluğu', 'Güneş Sultanlığı', 'Yıldız Kıralığı',
+      'Sancak Beyliği', 'Bozkır Kağanlığı', 'Hisar Cumhuriyeti'
+    ];
+    $('rndNameBtn').addEventListener('click', (e) => {
+      e.preventDefault();
+      const cur = $('nameIn').value.trim();
+      const pool = RAND_NAMES.filter((x) => x !== cur);
+      $('nameIn').value = pool[Math.floor(Math.random() * pool.length)];
+      validate();
+      $('nameIn').focus();
+    });
     $('startBtn').addEventListener('click', () => start(null));
     try { const n = localStorage.getItem('hc_name'); if (n) $('nameIn').value = n; } catch (e) { /* yok */ }
     // çevrimiçi
@@ -172,7 +189,10 @@
     $('startBtn').disabled = !ok || busy;
     $('hostBtn').disabled = !ok || busy;
     $('joinBtn').disabled = !ok || busy || G.Net.cleanCode($('codeIn').value).length !== 5;
-    $('startHint').textContent = !$('nameIn').value.trim() ? 'Bir ad gir' : !startState.ideology ? 'Bir ideoloji seç' : 'Hazırsın!';
+    const hint = $('startHint');
+    const ready = ok && !busy;
+    hint.textContent = !$('nameIn').value.trim() ? 'Bir ad gir' : !startState.ideology ? 'Bir ideoloji seç' : '✓ Hazırsın! Tek başına ya da oda kurarak başla.';
+    hint.classList.toggle('ready', ready);
   }
 
   // ---------- çevrimiçi lobi ----------
@@ -337,12 +357,14 @@
     let last = performance.now(), acc = 0, topT = 0, soundT = 0, moodT = 0, lastSim = performance.now();
     // Oyun ilerletme. İstemci oyunu ilerletmez (durum host'tan gelir), yalnızca zamanı akıcı yürütür.
     function simulate(now, cap) {
-      const dt = Math.min(cap, Math.max(0, (now - lastSim) / 1000));
+      const rawDt = Math.min(cap, Math.max(0, (now - lastSim) / 1000));
       lastSim = now;
-      if (game.mp === 'client') { net.advance(dt); return; }
+      if (game.mp === 'client') { net.advance(rawDt); return; }
       if (!game.mp && ui.paused) return; // tek oyunculu: oyun menüsü açıkken duraklat
-      acc += dt;
-      while (acc >= 0.05) { game.update(0.05); acc -= 0.05; }
+      const mult = !game.mp && ui.speed ? ui.speed : 1;
+      acc = Math.min(1, acc + rawDt * mult);
+      let steps = 0;
+      while (acc >= 0.05 && steps++ < 16) { game.update(0.05); acc -= 0.05; }
     }
     // Host'un sekmesi arka plandayken çizim durur ama oyun herkes için sürmeli
     if (game.mp === 'host') setInterval(() => { if (document.hidden) simulate(performance.now(), 1.5); }, 250);
@@ -379,6 +401,7 @@
       const dt = Math.min(0.1, (now - last) / 1000);
       last = now;
       // kamera
+      if (keys.w || keys.s || keys.a || keys.d) renderer._camTween = null;
       const sp = (keys.shift ? 1400 : 800) * dt / renderer.cam.zoom;
       if (keys.w) renderer.cam.y -= sp;
       if (keys.s) renderer.cam.y += sp;
@@ -416,7 +439,16 @@
       if (e.code === 'Digit2') ui.openMenu('military');
       if (e.code === 'Digit3') ui.openMenu('alliances');
       if (e.code === 'Digit4') ui.openMenu('shop');
-      if (e.code === 'Space' && game.player.capital >= 0) { const c = game.cities[game.player.capital]; renderer.cam.x = c.x; renderer.cam.y = c.y; e.preventDefault(); }
+      if (e.code === 'Period' && !game.mp && !ui.dialogOpen()) {
+        const next = ui.speed === 1 ? 2 : ui.speed === 2 ? 4 : 1;
+        ui.setSpeed(next);
+        e.preventDefault();
+      }
+      if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+        const sp = { KeyZ: 0.25, KeyX: 0.5, KeyC: 0.75, KeyV: 1 }[e.code];
+        if (sp && ui.setSplitPct(sp)) e.preventDefault();
+      }
+      if (e.code === 'Space' && game.player.capital >= 0) { const c = game.cities[game.player.capital]; renderer.focus(c.x, c.y); e.preventDefault(); }
     });
     window.addEventListener('keyup', (e) => { if (keyMap[e.code]) keys[keyMap[e.code]] = false; });
     window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
@@ -451,6 +483,7 @@
         const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
         if (!drag.moved && Math.hypot(dx, dy) > (e.pointerType === 'touch' ? 10 : 6)) drag.moved = true;
         if (drag.moved) {
+          renderer._camTween = null;
           renderer.cam.x = drag.cx - dx / renderer.cam.zoom;
           renderer.cam.y = drag.cy - dy / renderer.cam.zoom;
           renderer.clampCam();
@@ -490,7 +523,7 @@
     const miniJump = (e) => {
       const r = mini.getBoundingClientRect();
       const w = renderer.miniToWorld(e.clientX - r.left, e.clientY - r.top);
-      if (w) { renderer.cam.x = w[0]; renderer.cam.y = w[1]; renderer.clampCam(); }
+      if (w) { renderer._camTween = null; renderer.cam.x = w[0]; renderer.cam.y = w[1]; renderer.clampCam(); }
     };
     mini.addEventListener('pointerdown', (e) => { miniDrag = true; mini.setPointerCapture(e.pointerId); miniJump(e); });
     mini.addEventListener('pointermove', (e) => { if (miniDrag) miniJump(e); });
