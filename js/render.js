@@ -241,7 +241,7 @@
       }
       // Ülke renkleri: iç kısımda araziyi örtmeyen hafif boya (orman, çöl, kar, kayalar görünür kalır);
       // ülke kimliğini sınır boyunca içeri doğru solan renkli şerit verir.
-      c.globalAlpha = 0.14;
+      c.globalAlpha = 0.22;
       for (const city of g.cities) { c.fillStyle = this.fillFor(city); c.fill(this.cityPaths[city.id]); }
       // Ülke sınırı boyunca içeri doğru renkli şerit: ülke kimliği kenardan okunur, iç kısımda yer şekilleri görünür kalır
       if (!this._cityEdges) {
@@ -262,9 +262,9 @@
         const p = G.PALETTE[g.cityColorIdx(city)];
         c.save(); c.clip(this.cityPaths[city.id]);
         c.strokeStyle = U.hsl(p.h, Math.min(85, p.s + 22), p.l);
-        c.globalAlpha = 0.3; c.lineWidth = 64; c.stroke(path);
-        c.globalAlpha = 0.5; c.lineWidth = 34; c.stroke(path);
-        c.globalAlpha = 0.9; c.lineWidth = 13; c.stroke(path);
+        c.globalAlpha = 0.38; c.lineWidth = 76; c.stroke(path);
+        c.globalAlpha = 0.6; c.lineWidth = 38; c.stroke(path);
+        c.globalAlpha = 0.95; c.lineWidth = 15; c.stroke(path);
         c.restore();
       }
       c.globalAlpha = 1;
@@ -529,7 +529,7 @@
       if (sx1 > sx0 && sy1 > sy0) {
         ctx.drawImage(this.mapLayer, sx0 * S, sy0 * S, (sx1 - sx0) * S, (sy1 - sy0) * S, sx0, sy0, sx1 - sx0, sy1 - sy0);
         // uydu görünümünde uzaklaştıkça ülke renkleri belirginleşir (yakında yer şekilleri, uzakta siyasi harita)
-        const ta = this.isTerrain() && this.tintLayer ? U.clamp((0.62 - z) * 0.95, 0, 0.42) : 0;
+        const ta = this.isTerrain() && this.tintLayer ? U.clamp((0.8 - z) * 0.9, 0, 0.5) : 0;
         if (ta > 0.01) {
           ctx.globalAlpha = ta;
           ctx.drawImage(this.tintLayer, sx0 * S, sy0 * S, (sx1 - sx0) * S, (sy1 - sy0) * S, sx0, sy0, sx1 - sx0, sy1 - sy0);
@@ -1500,7 +1500,7 @@
         mctx.setTransform(1, 0, 0, 1, 0, 0);
         mctx.fillStyle = this.isTerrain() ? '#16395f' : '#aebdaf'; mctx.fillRect(0, 0, W, H);
         mctx.drawImage(this.mapLayer, ox, oy, m.W * sc, m.H * sc);
-        if (this.isTerrain() && this.tintLayer) { mctx.globalAlpha = 0.5; mctx.drawImage(this.tintLayer, ox, oy, m.W * sc, m.H * sc); mctx.globalAlpha = 1; }
+        if (this.isTerrain() && this.tintLayer) { mctx.globalAlpha = 0.6; mctx.drawImage(this.tintLayer, ox, oy, m.W * sc, m.H * sc); mctx.globalAlpha = 1; }
         mctx.setTransform(sc, 0, 0, sc, ox, oy);
         mctx.lineJoin = 'round';
         mctx.strokeStyle = 'rgba(40,24,10,0.9)'; mctx.lineWidth = 2.2 / sc * (W / 460); mctx.stroke(this.border);
