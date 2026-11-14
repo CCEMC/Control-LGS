@@ -58,7 +58,10 @@ bir sonraki açılışta yeni sürümü alır.
 - **Otomatik kayıt:** her 10 sn'de ve uygulama arka plana geçince kaydeder; giriş ekranında **Kaldığın Yerden Devam Et**
 - Oyun açıkken ekran kararmaz; saldırı/savaş bildirimlerinde titreşim
 - Uygulama arka plandayken oyun duraklar
-- **Ses ve müzik** (dosyasız, tamamı tarayıcıda üretilir): barışta sakin müzik, savaşta taiko davullu savaş müziği, çatışmada daha yoğun hali;
+- **Ses ve müzik** (dosyasız, tamamı tarayıcıda üretilir): A-B-A-C formunda 32 ölçülük bir şarkı, salon yankısı ve stereo yerleşimle.
+  Barışta yaylı halısı, lavta arpeji ve flüt/obua melodisi (ikinci bölümde hafif def); savaş ilan edilince ana tema baştan
+  kornolarla girer: taiko, dörtnala bas yaylılar, pirinç vuruşları, bölüm sonlarında trampet ruloları; çatışmada trompet ikilemesi,
+  keman, koro ve trampet eklenir. Barış ve savaş katmanları aynı akorları çaldığı için geçişler pürüzsüzdür. Ayrıca
   kılıç sesleri, savaş boruları, fanfar, füze/patlama, para ve arayüz sesleri. Üst çubuktaki 🔊 düğmesi (ya da **M**) sesi açar/kapatır.
 - **Uydu görünümü (yer şekilleri):** harita, haritanın tohumundan üretilen uydu fotoğrafı görünümlü arazinin üstünde çizilir:
   kıyıdan içeri yükselen arazi, sırtlı dağ sıraları ve karlı zirveler, nem haritasına göre orman / çayır / bozkır / çöl, kumsallar,
@@ -67,9 +70,9 @@ bir sonraki açılışta yeni sürümü alır.
   uzaklaştıkça (ve minimapte) ülke renkleri belirginleşir. Sınırlar açık renkli çizgilerle görünür. Oyun menüsünden ya da
   **G** tuşuyla eski parşömen haritaya geçilebilir (orada yer şekilleri mürekkep işaretleriyle çizilir); seçim cihazda hatırlanır.
   Arazi oyun açılırken ~0,5 sn'de, dilimler hâlinde üretilir.
-- **Yapı modelleri:** fabrikalar haritada testere dişli çatılı, bantlı bacasından duman tüten tuğla binalar; inşaattaki
-  fabrika iskele ve vinçle, altında dolan çubukla görünür. Şehir savunması kuleli, mazgallı, ülke bayrağı dalgalanan bir
-  kale; hava koruma kum torbalı uçaksavar ve dönen radar çanağıdır. Modeller yakınlaştıkça büyür.
+- **Yapı modelleri:** fabrikalar haritada sade siluetler (testere dişli çatı ve bacadan tüten duman); inşaattaki fabrika soluk
+  siluet ve altında dolan çubukla görünür. Şehir savunması olan şehrin sınırı boyunca, biraz içeriden giden bir sur çizgisi ve
+  üzerinde dik çizgiler çizilir. Hava koruma kum torbalı uçaksavar ve dönen radar çanağıdır. Modeller yakınlaştıkça büyür.
 - **Yer şekilleri savaşı etkiler:** her şehrin arazisi, uydu görünümündeki yükseklik ve nemden belirlenir:
 
   | Arazi | Savunma | İşgal süresi |

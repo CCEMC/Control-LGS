@@ -589,6 +589,7 @@
 
       // ekran koordinatları
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      this.drawWalls(ctx, visible, z);
       this.drawLabels(ctx, z);
       this.drawCityIcons(ctx, visible, z);
       this.drawMoving(ctx, now);
@@ -941,7 +942,7 @@
         const [sx, sy] = this.toScreen(city.x, city.y);
         const isCap = capitals.has(city.id);
         if (isCap) ctx.drawImage(this.capSprite(city.id === g.player.capital), sx - 13 * s, sy - 37 * s, 26 * s, 26 * s);
-        if (city.factories || city.building.length || city.cityDef || city.airDef) this.drawCityModels(ctx, city, sx, sy, mS, now, invDur);
+        if (city.factories || city.building.length || city.airDef) this.drawCityModels(ctx, city, sx, sy, mS, now, invDur);
         const mk = markFn ? markFn(city.id) : null;
         if (mk) {
           const txt = mk === 'give' ? 'Ver' : 'Al';
@@ -991,18 +992,17 @@
       }
     }
 
-    // ---------- şehir yapılarının modelleri (fabrika, kale, hava savunma) ----------
+    // ---------- şehir yapıları: fabrika ve hava savunma modelleri, şehir savunması için sur ----------
     // Yakınlaştıkça büyür; uzakta küçülür ama okunur kalır.
     modelScale() { return this.ui.scale * U.clamp(0.42 + 0.7 * this.cam.zoom, 0.66, 1.75); }
 
-    // Yapıların yerleşimi: şehrin altında satırlar (kale, hava savunma, fabrikalar, inşaattakiler).
+    // Yapıların yerleşimi: şehrin altında satırlar (hava savunma, fabrikalar, inşaattakiler).
     // Satır en fazla ~110 birim genişlikte; dolarsa alta yeni satır açılır.
     cityModelLayout(city) {
       const items = [];
-      if (city.cityDef) items.push({ k: 'fort', w: 38 });
       if (city.airDef) items.push({ k: 'aa', w: 28 });
-      for (let j = 0; j < city.factories; j++) items.push({ k: 'f', w: 30 });
-      for (let j = 0; j < city.building.length; j++) items.push({ k: 'b', w: 30, j });
+      for (let j = 0; j < city.factories; j++) items.push({ k: 'f', w: 22 });
+      for (let j = 0; j < city.building.length; j++) items.push({ k: 'b', w: 22, j });
       const rows = [[]];
       let rw = 0;
       for (const it of items) {
@@ -1012,38 +1012,79 @@
       return rows;
     }
     modelRowsCount(city) {
-      const n = city.factories + city.building.length + (city.cityDef ? 1 : 0) + (city.airDef ? 1 : 0);
+      const n = city.factories + city.building.length + (city.airDef ? 1 : 0);
       return n ? this.cityModelLayout(city).length : 0;
     }
 
     drawCityModels(ctx, city, sx, sy, m, now, invDur) {
       const g = this.game, rows = this.cityModelLayout(city);
       const smoke = this.cam.zoom >= 0.32;
-      const color = (g.countries[city.owner] || {}).color || '#888';
       for (let r = 0; r < rows.length; r++) {
         const row = rows[r];
         let tw = 0; for (const it of row) tw += it.w;
         let x = sx - (tw * m) / 2;
-        const base = sy + (38 + r * 25) * m; // satırın zemin çizgisi
+        const base = sy + (34 + r * 22) * m; // satırın zemin çizgisi
         for (const it of row) {
           const cx = x + (it.w * m) / 2;
-          if (it.k === 'fort') { this.drawModel(ctx, this.modelSprite('fort'), cx, base, m); this.fortFlag(ctx, cx, base, m, color, now, city.id); }
-          else if (it.k === 'aa') { this.drawModel(ctx, this.modelSprite('aa'), cx, base, m); this.aaRadar(ctx, cx, base, m, now, city.id); }
+          if (it.k === 'aa') { this.drawModel(ctx, this.modelSprite('aa'), cx, base, m); this.aaRadar(ctx, cx, base, m, now, city.id); }
           else if (it.k === 'f') {
             this.drawModel(ctx, this.modelSprite('factory'), cx, base, m);
-            if (smoke) this.factorySmoke(ctx, cx + 8 * m, base - 25 * m, m, now, city.id * 3.1 + x * 0.013);
+            if (smoke) this.factorySmoke(ctx, cx + 5.5 * m, base - 19 * m, m, now, city.id * 3.1 + x * 0.013);
           } else {
+            // inşaattaki fabrika: soluk siluet + altında dolan çubuk
             const p = U.clamp(1 - (city.building[it.j] - g.time) * invDur, 0, 1);
-            ctx.globalAlpha = 0.3 + 0.45 * p;
+            ctx.globalAlpha = 0.28 + 0.4 * p;
             this.drawModel(ctx, this.modelSprite('factory'), cx, base, m);
             ctx.globalAlpha = 1;
-            this.drawModel(ctx, this.modelSprite('scaffold'), cx, base, m);
-            ctx.fillStyle = 'rgba(40,24,10,0.6)'; ctx.fillRect(cx - 11 * m, base + 2.5 * m, 22 * m, 3 * m);
-            ctx.fillStyle = '#e2b84a'; ctx.fillRect(cx - 11 * m, base + 2.5 * m, 22 * m * p, 3 * m);
+            ctx.fillStyle = 'rgba(20,14,8,0.7)'; ctx.fillRect(cx - 9 * m, base + 2 * m, 18 * m, 2.6 * m);
+            ctx.fillStyle = '#e2b84a'; ctx.fillRect(cx - 9 * m, base + 2 * m, 18 * m * p, 2.6 * m);
           }
           x += it.w * m;
         }
       }
+    }
+
+    // Şehir savunması: şehrin sınırı boyunca, biraz içeriden giden sur çizgisi ve üzerinde dik çizgiler.
+    // Çizgiler ekranda eşit aralıklı ve sabit boyludur (yakınlaşınca sıklaşmaz, uzaklaşınca kaybolmaz).
+    drawWalls(ctx, visible, z) {
+      let any = false;
+      for (let i = 0; i < visible.length; i++) if (visible[i].cityDef) { any = true; break; }
+      if (!any) return;
+      const s = this.ui.scale, pts = this._wallPts || (this._wallPts = []);
+      const h = U.clamp(4 + 4 * z, 4.5, 10) * s; // dik çizgi boyu (px)
+      const gap = U.clamp(5.5 + 2 * z, 6, 10) * s; // dik çizgiler arası (px)
+      const base = new Path2D(), posts = new Path2D();
+      for (const c of visible) {
+        if (!c.cityDef) continue;
+        const P = pts[c.id] || (pts[c.id] = this.wallPoints(c.id));
+        let acc = gap, px = 0, py = 0;
+        for (let i = 0; i < P.length; i++) {
+          const sx = (P[i][0] - this.cam.x) * z + this.vw / 2, sy = (P[i][1] - this.cam.y) * z + this.vh / 2;
+          if (i === 0) base.moveTo(sx, sy); else { base.lineTo(sx, sy); acc += Math.abs(sx - px) + Math.abs(sy - py); }
+          if (acc >= gap) { posts.moveTo(sx, sy); posts.lineTo(sx, sy - h); acc = 0; }
+          px = sx; py = sy;
+        }
+        base.closePath();
+      }
+      ctx.lineCap = 'butt'; ctx.lineJoin = 'round';
+      ctx.strokeStyle = 'rgba(20,14,8,0.85)';
+      ctx.lineWidth = 4 * s; ctx.stroke(base);
+      ctx.lineWidth = 3.4 * s; ctx.stroke(posts);
+      ctx.strokeStyle = '#ece4cf';
+      ctx.lineWidth = 1.9 * s; ctx.stroke(base);
+      ctx.lineWidth = 1.4 * s; ctx.stroke(posts);
+      ctx.lineCap = 'round';
+    }
+    // şehrin dış çizgisi, merkeze doğru biraz içeri çekilip ~3 birim aralıkla örneklenir
+    wallPoints(cid) {
+      const mc = this.game.map.cities[cid], out = [];
+      const r = Math.sqrt(mc.area / Math.PI), ins = Math.min(8, r * 0.1);
+      const o = mc.outline.map(([x, y]) => { const dx = mc.x - x, dy = mc.y - y, d = Math.hypot(dx, dy) || 1; return [x + (dx / d) * ins, y + (dy / d) * ins]; });
+      for (let i = 0; i < o.length; i++) {
+        const a = o[i], b = o[(i + 1) % o.length], n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 3));
+        for (let k = 0; k < n; k++) out.push([a[0] + ((b[0] - a[0]) * k) / n, a[1] + ((b[1] - a[1]) * k) / n]);
+      }
+      return out;
     }
     // sprite: birim koordinatlı çizim, alt orta noktası (ax, ay) zemine oturur
     drawModel(ctx, sp, x, y, m) { ctx.drawImage(sp.c, x - sp.ax * m, y - sp.ay * m, sp.w * m, sp.h * m); }
@@ -1052,7 +1093,7 @@
       const cache = this._mdl || (this._mdl = {});
       if (cache[kind]) return cache[kind];
       const R = 4; // birim başına piksel (keskin görünüm için)
-      const dims = { factory: [34, 34, 17, 31], fort: [42, 36, 21, 32], aa: [30, 26, 15, 22], scaffold: [34, 34, 17, 31] }[kind];
+      const dims = { factory: [24, 24, 12, 21], aa: [30, 26, 15, 22] }[kind];
       const [w, h, ax, ay] = dims;
       const c = document.createElement('canvas'); c.width = w * R; c.height = h * R;
       const x = c.getContext('2d');
@@ -1064,65 +1105,10 @@
       };
       const shadow = (rx, ry) => { x.fillStyle = 'rgba(0,0,0,0.32)'; x.beginPath(); x.ellipse(1.5, 0.5, rx, ry, 0, 0, Math.PI * 2); x.fill(); };
       const OUT = 'rgba(28,18,10,0.9)';
-      const DX = 5, DY = -3.5; // eğik izdüşüm derinliği (sağa-yukarı)
-      if (kind === 'factory' || kind === 'scaffold') {
-        if (kind === 'factory') {
-          shadow(16, 3.2);
-          // sağ yan yüz
-          poly([[9, 0], [9 + DX, DY], [9 + DX, -10 + DY], [9, -10]], '#5e3020', OUT);
-          // ön yüz (tuğla)
-          poly([[-14, 0], [9, 0], [9, -10], [-14, -10]], '#9a5236', OUT);
-          x.strokeStyle = 'rgba(60,26,14,0.35)'; x.lineWidth = 0.35;
-          for (let yy = -2.5; yy > -10; yy -= 2.5) { x.beginPath(); x.moveTo(-14, yy); x.lineTo(9, yy); x.stroke(); }
-          // pencereler
-          x.fillStyle = '#f2d27a';
-          for (let wx = -12; wx < 6; wx += 4.5) x.fillRect(wx, -7.5, 2.4, 3.2);
-          x.fillStyle = 'rgba(40,20,10,0.55)'; x.fillRect(-1.5, -4, 4, 4); // kapı
-          // testere dişli çatı (camlı yüzler aydınlık)
-          for (let k = 0; k < 3; k++) {
-            const x0 = -14 + k * 7.67, x1 = x0 + 7.67;
-            poly([[x0, -10], [x0 + DX, -10 + DY], [x0 + DX, -16 + DY], [x0, -16]], '#9cc6da', OUT, 0.5);
-            poly([[x0, -16], [x0 + DX, -16 + DY], [x1 + DX, -10 + DY], [x1, -10]], '#6b6f78', OUT, 0.5);
-          }
-          // baca (kırmızı-beyaz bantlı)
-          poly([[5.5, -10], [10.5, -10], [10, -25], [6, -25]], '#7a3a26', OUT);
-          x.fillStyle = '#efe6d6'; x.fillRect(6.1, -22.5, 3.8, 1.6); x.fillRect(6.2, -18.5, 3.6, 1.4);
-          poly([[5.6, -25], [10.4, -25], [10.4, -26.3], [5.6, -26.3]], '#3a2216', OUT, 0.5);
-        } else {
-          // inşaat iskelesi + vinç
-          x.strokeStyle = '#c99a4a'; x.lineWidth = 0.9;
-          for (const px of [-14, -6, 2, 9]) { x.beginPath(); x.moveTo(px, 0); x.lineTo(px, -15); x.stroke(); }
-          for (const py of [-5, -10, -15]) { x.beginPath(); x.moveTo(-14, py); x.lineTo(9, py); x.stroke(); }
-          x.beginPath(); x.moveTo(-14, 0); x.lineTo(-6, -10); x.moveTo(2, 0); x.lineTo(9, -10); x.stroke();
-          x.strokeStyle = '#e2b84a'; x.lineWidth = 1.1;
-          x.beginPath(); x.moveTo(12, 0); x.lineTo(12, -27); x.lineTo(-8, -27); x.stroke();
-          x.lineWidth = 0.5; x.beginPath(); x.moveTo(-5, -27); x.lineTo(-5, -19); x.stroke();
-          x.fillStyle = '#5a4630'; x.fillRect(-6.5, -19, 3, 2);
-        }
-      } else if (kind === 'fort') {
-        shadow(20, 3.6);
-        const ST = '#b3a993', STD = '#857b67', STL = '#cfc6b0';
-        const crenel = (x0, x1, y, step) => { x.fillStyle = STL; for (let px = x0; px < x1 - 0.5; px += step) { x.fillRect(px, y - 2, step * 0.55, 2); x.strokeStyle = OUT; x.lineWidth = 0.35; x.strokeRect(px, y - 2, step * 0.55, 2); } };
-        // iç kale (arka)
-        poly([[-5, -10], [5, -10], [5, -22], [-5, -22]], ST, OUT);
-        poly([[5, -10], [5 + DX * 0.7, -10 + DY * 0.7], [5 + DX * 0.7, -22 + DY * 0.7], [5, -22]], STD, OUT);
-        crenel(-5, 5, -22, 2.5);
-        x.fillStyle = 'rgba(30,20,12,0.7)'; x.fillRect(-1, -19, 2, 3);
-        // sur (ön)
-        poly([[-14, 0], [14, 0], [14, -9], [-14, -9]], ST, OUT);
-        crenel(-14, 14, -9, 2.8);
-        x.strokeStyle = 'rgba(70,60,46,0.45)'; x.lineWidth = 0.35;
-        for (let yy = -3; yy > -9; yy -= 3) { x.beginPath(); x.moveTo(-14, yy); x.lineTo(14, yy); x.stroke(); }
-        // kapı (kemerli)
-        x.fillStyle = '#3a2614'; x.beginPath(); x.moveTo(-3, 0); x.lineTo(-3, -4.5); x.arc(0, -4.5, 3, Math.PI, 0); x.lineTo(3, 0); x.closePath(); x.fill();
-        x.strokeStyle = '#6e5a3c'; x.lineWidth = 0.4; for (let px = -2; px <= 2; px += 1.3) { x.beginPath(); x.moveTo(px, 0); x.lineTo(px, -6.5); x.stroke(); }
-        // kuleler
-        for (const tx of [-17, 11]) {
-          poly([[tx, 0], [tx + 6, 0], [tx + 6, -15], [tx, -15]], ST, OUT);
-          poly([[tx + 6, 0], [tx + 6 + DX * 0.5, DY * 0.5], [tx + 6 + DX * 0.5, -15 + DY * 0.5], [tx + 6, -15]], STD, OUT);
-          crenel(tx, tx + 6, -15, 2);
-          x.fillStyle = 'rgba(30,20,12,0.75)'; x.fillRect(tx + 2.4, -11, 1.2, 3);
-        }
+      if (kind === 'factory') {
+        // sade siluet: düz gövde, üç dişli çatı ve baca; açık renkli ince kenar her zeminde okunur
+        poly([[-10, 0], [-10, -11], [-5, -7], [-5, -11], [0, -7], [0, -11], [4, -7], [4, -18], [7, -18], [7, -7], [8, -7], [8, 0]],
+          '#2f2c29', 'rgba(250,242,222,0.92)', 1.1);
       } else if (kind === 'aa') {
         shadow(14, 3);
         // kum torbası çemberi
@@ -1144,22 +1130,12 @@
     }
     // fabrika bacasından yükselen duman
     factorySmoke(ctx, x, y, m, now, seed) {
-      for (let k = 0; k < 3; k++) {
-        const ph = (now / 2200 + k / 3 + seed) % 1;
-        const r = (1.4 + ph * 3.6) * m;
-        ctx.fillStyle = `rgba(214,212,206,${(0.55 * (1 - ph)).toFixed(3)})`;
-        ctx.beginPath(); ctx.arc(x + ph * 7 * m + Math.sin(ph * 6 + seed) * m, y - ph * 15 * m, r, 0, Math.PI * 2); ctx.fill();
+      for (let k = 0; k < 2; k++) {
+        const ph = (now / 2400 + k / 2 + seed) % 1;
+        const r = (1.1 + ph * 2.6) * m;
+        ctx.fillStyle = `rgba(222,220,214,${(0.45 * (1 - ph)).toFixed(3)})`;
+        ctx.beginPath(); ctx.arc(x + ph * 5 * m, y - ph * 11 * m, r, 0, Math.PI * 2); ctx.fill();
       }
-    }
-    // kalenin burcunda ülke bayrağı (dalgalanır)
-    fortFlag(ctx, x, y, m, color, now, id) {
-      const px = x, top = y - 31 * m, fw = 7 * m, fh = 4.5 * m, wv = Math.sin(now / 260 + id) * 0.9 * m;
-      ctx.strokeStyle = '#3a2614'; ctx.lineWidth = Math.max(1, 0.7 * m);
-      ctx.beginPath(); ctx.moveTo(px, y - 22 * m); ctx.lineTo(px, top); ctx.stroke();
-      ctx.fillStyle = color;
-      ctx.beginPath(); ctx.moveTo(px, top); ctx.quadraticCurveTo(px + fw * 0.5, top - wv, px + fw, top + wv * 0.5);
-      ctx.lineTo(px + fw, top + fh + wv * 0.5); ctx.quadraticCurveTo(px + fw * 0.5, top + fh - wv, px, top + fh); ctx.closePath(); ctx.fill();
-      ctx.strokeStyle = 'rgba(28,18,10,0.8)'; ctx.lineWidth = Math.max(0.6, 0.4 * m); ctx.stroke();
     }
     // hava savunmanın dönen radar çanağı
     aaRadar(ctx, x, y, m, now, id) {
