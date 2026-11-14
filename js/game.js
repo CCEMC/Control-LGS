@@ -37,7 +37,7 @@
   };
 
   const PRICES = { warRight: 5, alliance: 5, leave: 5, upgrade: 5, troop: 0, blitz: 5, cityDef: 5, factory: 12, factoryLimit: 5,
-    plane: 10, rebellion: 40, missile: 35, airDef: 20, ideoUp: 6 };
+    plane: 10, rebellion: 150, missile: 35, airDef: 20, ideoUp: 6 };
 
   // İdeolojiye özel geliştirmeler: her ideolojinin kendine ait 3 geliştirmesi var, her biri en fazla 3 seviye.
   // Fiyat seviye başına artar (6 → 9 → 12, ideolojinin fiyat çarpanıyla). Etkiler seviye başınadır.

@@ -74,7 +74,7 @@
       }
       if (best && bt > 15000) game.cmdBuy(cid, 'missile', { city: best.id });
     }
-    if (atWar && c.money >= 60 && rnd() < 0.05) {
+    if (atWar && c.money >= game.price(cid, 'rebellion') + 20 && rnd() < 0.05) {
       const e = enemies.find((x) => !game.isRebel(x));
       if (e !== undefined) game.cmdBuy(cid, 'rebellion', { country: e });
     }
