@@ -228,9 +228,46 @@
           c.strokeStyle = 'rgba(70,130,175,0.95)'; c.lineWidth = 1.8 + p * 1.7; c.stroke();
         }
       }
-      // ülke renkleri: araziyi örtmeyen yarı saydam boya
-      c.globalAlpha = 0.3;
+      // tam renkli ülke katmanı: uzaklaştıkça ve minimapte saydamlıkla üste bindirilir
+      const S = this.layerScale;
+      if (!this.tintLayer) { this.tintLayer = document.createElement('canvas'); this.tintLayer.width = this.landLayer.width; this.tintLayer.height = this.landLayer.height; }
+      const tc = this.tintLayer.getContext('2d');
+      tc.setTransform(1, 0, 0, 1, 0, 0); tc.clearRect(0, 0, this.tintLayer.width, this.tintLayer.height);
+      tc.setTransform(S, 0, 0, S, 0, 0); tc.lineJoin = 'round';
+      for (const city of g.cities) {
+        const p = G.PALETTE[g.cityColorIdx(city)];
+        tc.fillStyle = tc.strokeStyle = U.hsl(p.h, Math.min(85, p.s + 15), p.l);
+        tc.fill(this.cityPaths[city.id]); tc.lineWidth = 2; tc.stroke(this.cityPaths[city.id]);
+      }
+      // Ülke renkleri: iç kısımda araziyi örtmeyen hafif boya (orman, çöl, kar, kayalar görünür kalır);
+      // ülke kimliğini sınır boyunca içeri doğru solan renkli şerit verir.
+      c.globalAlpha = 0.14;
       for (const city of g.cities) { c.fillStyle = this.fillFor(city); c.fill(this.cityPaths[city.id]); }
+      // Ülke sınırı boyunca içeri doğru renkli şerit: ülke kimliği kenardan okunur, iç kısımda yer şekilleri görünür kalır
+      if (!this._cityEdges) {
+        this._cityEdges = g.cities.map(() => []);
+        for (const e of g.map.edges) { if (e.b < 0) continue; this._cityEdges[e.a].push(e); this._cityEdges[e.b].push(e); }
+      }
+      c.globalAlpha = 1;
+      for (const city of g.cities) {
+        const own = g.cities[city.id].owner, list = this._cityEdges[city.id];
+        let path = null;
+        for (const e of list) {
+          const other = e.a === city.id ? e.b : e.a;
+          if (g.cities[other].owner === own) continue;
+          if (!path) path = new Path2D();
+          e.pts.forEach((p, i) => (i ? path.lineTo(p[0], p[1]) : path.moveTo(p[0], p[1])));
+        }
+        if (!path) continue;
+        const p = G.PALETTE[g.cityColorIdx(city)];
+        c.save(); c.clip(this.cityPaths[city.id]);
+        c.strokeStyle = U.hsl(p.h, Math.min(85, p.s + 22), p.l);
+        c.globalAlpha = 0.3; c.lineWidth = 64; c.stroke(path);
+        c.globalAlpha = 0.5; c.lineWidth = 34; c.stroke(path);
+        c.globalAlpha = 0.9; c.lineWidth = 13; c.stroke(path);
+        c.restore();
+      }
+      c.globalAlpha = 1;
       c.globalAlpha = 0.55;
       for (const city of g.cities) if (g.isRebel(city.owner)) { c.fillStyle = this.hatch; c.fill(this.cityPaths[city.id]); }
       c.globalAlpha = 1;
@@ -244,20 +281,6 @@
       mc.setTransform(1, 0, 0, 1, 0, 0);
       mc.clearRect(0, 0, this.mapLayer.width, this.mapLayer.height);
       mc.drawImage(this.baseLayer, 0, 0);
-      if (this.isTerrain()) {
-        // Uydu görünümünde ülke rengi: 'color' karışımı arazinin tonunu ülkenin rengine boyar ama aydınlığını
-        // (dağ gölgeleri, nehir vadileri) korur. Böylece yeşil orman / sarı çöl ülke rengini bastırmaz.
-        const g = this.game, S = this.layerScale;
-        mc.setTransform(S, 0, 0, S, 0, 0);
-        mc.globalCompositeOperation = 'color'; mc.globalAlpha = 0.78;
-        for (const city of g.cities) {
-          const p = G.PALETTE[g.cityColorIdx(city)];
-          mc.fillStyle = U.hsl(p.h, Math.min(85, p.s + 22), p.l);
-          mc.fill(this.cityPaths[city.id]);
-        }
-        mc.globalCompositeOperation = 'source-over'; mc.globalAlpha = 1;
-        mc.setTransform(1, 0, 0, 1, 0, 0);
-      }
       mc.drawImage(this.landLayer, 0, 0);
       this._miniVer = -1;
       this._brdVer = -1;
@@ -505,6 +528,13 @@
       const sx0 = U.clamp(vx0 - 4, 0, m.W), sy0 = U.clamp(vy0 - 4, 0, m.H), sx1 = U.clamp(vx1 + 4, 0, m.W), sy1 = U.clamp(vy1 + 4, 0, m.H);
       if (sx1 > sx0 && sy1 > sy0) {
         ctx.drawImage(this.mapLayer, sx0 * S, sy0 * S, (sx1 - sx0) * S, (sy1 - sy0) * S, sx0, sy0, sx1 - sx0, sy1 - sy0);
+        // uydu görünümünde uzaklaştıkça ülke renkleri belirginleşir (yakında yer şekilleri, uzakta siyasi harita)
+        const ta = this.isTerrain() && this.tintLayer ? U.clamp((0.62 - z) * 0.95, 0, 0.42) : 0;
+        if (ta > 0.01) {
+          ctx.globalAlpha = ta;
+          ctx.drawImage(this.tintLayer, sx0 * S, sy0 * S, (sx1 - sx0) * S, (sy1 - sy0) * S, sx0, sy0, sx1 - sx0, sy1 - sy0);
+          ctx.globalAlpha = 1;
+        }
       }
       ctx.lineJoin = 'round'; ctx.lineCap = 'round';
 
@@ -1470,6 +1500,7 @@
         mctx.setTransform(1, 0, 0, 1, 0, 0);
         mctx.fillStyle = this.isTerrain() ? '#16395f' : '#aebdaf'; mctx.fillRect(0, 0, W, H);
         mctx.drawImage(this.mapLayer, ox, oy, m.W * sc, m.H * sc);
+        if (this.isTerrain() && this.tintLayer) { mctx.globalAlpha = 0.5; mctx.drawImage(this.tintLayer, ox, oy, m.W * sc, m.H * sc); mctx.globalAlpha = 1; }
         mctx.setTransform(sc, 0, 0, sc, ox, oy);
         mctx.lineJoin = 'round';
         mctx.strokeStyle = 'rgba(40,24,10,0.9)'; mctx.lineWidth = 2.2 / sc * (W / 460); mctx.stroke(this.border);
