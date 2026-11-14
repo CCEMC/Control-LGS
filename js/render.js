@@ -229,7 +229,7 @@
         }
       }
       // ülke renkleri: araziyi örtmeyen yarı saydam boya
-      c.globalAlpha = 0.27;
+      c.globalAlpha = 0.3;
       for (const city of g.cities) { c.fillStyle = this.fillFor(city); c.fill(this.cityPaths[city.id]); }
       c.globalAlpha = 0.55;
       for (const city of g.cities) if (g.isRebel(city.owner)) { c.fillStyle = this.hatch; c.fill(this.cityPaths[city.id]); }
@@ -244,6 +244,20 @@
       mc.setTransform(1, 0, 0, 1, 0, 0);
       mc.clearRect(0, 0, this.mapLayer.width, this.mapLayer.height);
       mc.drawImage(this.baseLayer, 0, 0);
+      if (this.isTerrain()) {
+        // Uydu görünümünde ülke rengi: 'color' karışımı arazinin tonunu ülkenin rengine boyar ama aydınlığını
+        // (dağ gölgeleri, nehir vadileri) korur. Böylece yeşil orman / sarı çöl ülke rengini bastırmaz.
+        const g = this.game, S = this.layerScale;
+        mc.setTransform(S, 0, 0, S, 0, 0);
+        mc.globalCompositeOperation = 'color'; mc.globalAlpha = 0.78;
+        for (const city of g.cities) {
+          const p = G.PALETTE[g.cityColorIdx(city)];
+          mc.fillStyle = U.hsl(p.h, Math.min(85, p.s + 22), p.l);
+          mc.fill(this.cityPaths[city.id]);
+        }
+        mc.globalCompositeOperation = 'source-over'; mc.globalAlpha = 1;
+        mc.setTransform(1, 0, 0, 1, 0, 0);
+      }
       mc.drawImage(this.landLayer, 0, 0);
       this._miniVer = -1;
       this._brdVer = -1;

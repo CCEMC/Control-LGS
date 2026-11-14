@@ -62,8 +62,8 @@ bir sonraki açılışta yeni sürümü alır.
   kılıç sesleri, savaş boruları, fanfar, füze/patlama, para ve arayüz sesleri. Üst çubuktaki 🔊 düğmesi (ya da **M**) sesi açar/kapatır.
 - **Uydu görünümü (yer şekilleri):** harita, haritanın tohumundan üretilen uydu fotoğrafı görünümlü arazinin üstünde çizilir:
   kıyıdan içeri yükselen arazi, sırtlı dağ sıraları ve karlı zirveler, nem haritasına göre orman / çayır / bozkır / çöl, kumsallar,
-  kuzeybatıdan ışıklı kabartma gölgesi, sığdan derine renk değiştiren deniz ve dağlardan denize akan nehirler. Ülke renkleri yarı
-  saydamdır, sınırlar açık renkli çizgilerle görünür. Oyun menüsünden ya da
+  kuzeybatıdan ışıklı kabartma gölgesi, sığdan derine renk değiştiren deniz ve dağlardan denize akan nehirler. Ülke renkleri
+  araziyi kendi rengine boyar (dağ gölgeleri ve nehirler görünür kalır), sınırlar açık renkli çizgilerle görünür. Oyun menüsünden ya da
   **G** tuşuyla eski parşömen haritaya geçilebilir (orada yer şekilleri mürekkep işaretleriyle çizilir); seçim cihazda hatırlanır.
   Arazi oyun açılırken ~0,5 sn'de, dilimler hâlinde üretilir.
 - **Yer şekilleri savaşı etkiler:** her şehrin arazisi, uydu görünümündeki yükseklik ve nemden belirlenir:
