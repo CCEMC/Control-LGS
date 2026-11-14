@@ -1,5 +1,5 @@
 // Servis çalışanı: oyunu çevrimdışı çalıştırır. Dosyaları değiştirince VERSION'ı arttır.
-const VERSION = 'clgs-v30'; // js/net.js içindeki BUILD ile aynı olmalı (çevrimiçi sürüm kontrolü)
+const VERSION = 'clgs-v31'; // js/net.js içindeki BUILD ile aynı olmalı (çevrimiçi sürüm kontrolü)
 const FONTS = 'clgs-fonts'; // yazı tipi önbelleği sürüm değişince silinmez (çevrimdışı yazı tipleri kalsın)
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/style.css',

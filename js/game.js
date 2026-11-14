@@ -5,7 +5,7 @@
   const U = G.U;
 
   const CFG = {
-    incomeInterval: 15, factoryBuildTime: 6, troopBuildTime: 2, moveTime: 5, retreatTime: 2.5, warRightDelay: 20,
+    incomeInterval: 15, factoryBuildTime: 6, troopBuildTime: 2, maxTroopQueue: 100, moveTime: 5, retreatTime: 2.5, warRightDelay: 20,
     blitzDuration: 120, blitzBonus: 0.35, baseFactoryLimit: 3, maxLimitBuys: 3, maxUpgrade: 10,
     upgradeStep: 0.05, minAttackRemain: 3000, planeMax: 15000, planeTime: 4, missileTime: 3,
     rebellionMin: 5000, missileIntercept: 0.15, startMoney: 10, proposalTimeout: 30, REBEL: 9,
@@ -21,9 +21,6 @@
     conquestShare: 0.75,
     // Yükseklik avantajı: saldıranın şehri hedeften en az heightStep yüksekse saldırı +%10, alçaksa −%10
     heightStep: 0.1, heightBonus: 0.1,
-    // Asker bakımı: her şehir upkeepFreePerCity askeri bedava besler; fazlası için her upkeepPer asker başına
-    // gelir turunda 1₺. Hazine yetmezse ödenemeyen her 1₺ için desertPerUnpaid asker firar eder.
-    upkeepFreePerCity: 4000, upkeepPer: 20000, desertPerUnpaid: 5000,
     // Savaş yorgunluğu (0..1): savaşta artar (her ek cephe %50 hızlı), barışta azalır, şehir kaybetmek arttırır.
     // Gelir ve asker üretim hızı en çok wearyMaxEffect oranında düşer.
     wearyWarRate: 0.0006, wearyPeaceRate: 0.002, wearyCityLost: 0.03, wearyCityWon: 0.015, wearyMaxEffect: 0.5,
@@ -39,7 +36,7 @@
       perks: ['+%10 saldırı', '3 fabrika ile başlar', '85k asker ile başlar'] },
   };
 
-  const PRICES = { warRight: 5, alliance: 5, leave: 5, upgrade: 5, troop: 1, blitz: 5, cityDef: 5, factory: 12, factoryLimit: 5,
+  const PRICES = { warRight: 5, alliance: 5, leave: 5, upgrade: 5, troop: 0, blitz: 5, cityDef: 5, factory: 12, factoryLimit: 5,
     plane: 10, rebellion: 40, missile: 35, airDef: 20, ideoUp: 6 };
 
   // İdeolojiye özel geliştirmeler: her ideolojinin kendine ait 3 geliştirmesi var, her biri en fazla 3 seviye.
@@ -202,32 +199,11 @@
     // gelir: fabrika başına 1₺ (Demokrasi: Serbest Piyasa arttırır), savaş yorgunluğu düşürür
     incomeOf(cid) { return Math.round(this.factoriesOf(cid) * (1 + 0.2 * this.iu(cid, 'market')) * (1 - this.wearyCut(cid)) * 100) / 100; }
 
-    // ---- asker bakımı ve savaş yorgunluğu ----
+    // ---- savaş yorgunluğu ----
     // savaş yorgunluğunun gelir ve üretime etkisi (0 … wearyMaxEffect)
     wearyCut(cid) { const c = this.countries[cid]; return c && !c.isRebel ? CFG.wearyMaxEffect * U.clamp(c.weary || 0, 0, 1) : 0; }
-    // bakımı bedava olan asker sayısı: şehir başına upkeepFreePerCity
-    upkeepFree(cid) { let n = 0; for (const c of this.cities) if (c.owner === cid) n++; return n * CFG.upkeepFreePerCity; }
-    // gelir turu başına bakım masrafı (₺); extra: hesaba katılacak ek asker
-    upkeepOf(cid, extra) {
-      if (this.isRebel(cid)) return 0;
-      const ex = this.totalTroops(cid) + (extra || 0) - this.upkeepFree(cid);
-      return ex > 0 ? Math.round((ex / CFG.upkeepPer) * 100) / 100 : 0;
-    }
-    netIncome(cid) { return Math.round((this.incomeOf(cid) - this.upkeepOf(cid)) * 100) / 100; }
     // isyancılar dışındaki savaş sayısı
     warFoes(cid) { let n = 0; for (const w of this.wars.values()) if ((w.a === cid && !this.isRebel(w.b)) || (w.b === cid && !this.isRebel(w.a))) n++; return n; }
-    // Maaşı ödenemeyen askerlerin bir kısmı firar eder: şehirde bekleyen birliklerden eşit oranda düşülür
-    // (cephedeki ve yoldaki birlikler dokunulmaz). Firar eden asker sayısını döndürür.
-    desert(c, unpaid) {
-      const want = unpaid * CFG.desertPerUnpaid;
-      const idle = this.units.filter((u) => !u.dead && u.owner === c.id && !u.move && u.city !== null);
-      let total = 0; for (const u of idle) total += u.troops;
-      if (want <= 0 || total <= 0) return 0;
-      const frac = Math.min(1, want / total);
-      let lost = 0;
-      for (const u of idle) { const t = u.troops * frac; u.troops -= t; lost += t; if (u.troops < 50) { lost += u.troops; u.dead = true; } }
-      return lost;
-    }
     // yorgunluk eşikleri aşılınca oyuncuya haber ver
     wearyNotice(c, w0) {
       const w = c.weary || 0;
@@ -506,8 +482,7 @@
     cmdQueueTroops(cid, dir) {
       const c = this.countries[cid];
       if (dir > 0) {
-        const p = this.price(cid, 'troop');
-        if (!this.pay(cid, p)) return { err: 'Yetersiz para' };
+        if (c.queue >= CFG.maxTroopQueue) return { err: `Üretim sırası dolu (en fazla ${CFG.maxTroopQueue}k)` };
         c.queue++;
       } else {
         if (c.queue <= 0) return { err: 'Kuyrukta asker yok' };
@@ -1385,18 +1360,8 @@
         if (c.incomeTimer >= CFG.incomeInterval) {
           c.incomeTimer -= CFG.incomeInterval;
           const f = this.incomeOf(c.id); // Demokrasi: Serbest Piyasa geliri arttırır; savaş yorgunluğu düşürür
-          const up = this.upkeepOf(c.id); // asker bakımı (şehir başına 4k asker bedava)
-          let m = c.money + f - up;
-          if (m < 0) {
-            // hazine bakımı karşılamıyor: maaşı ödenemeyen askerlerin bir kısmı firar eder
-            const lost = this.desert(c, -m); m = 0;
-            if (c.isHuman && lost >= 500) this.say(c.id, `💸 Askerlere maaş ödenemedi: ${U.fmtK(Math.round(lost))} asker firar etti. Orduyu küçült, şehir kazan ya da gelirini arttır.`, 'bad');
-          } else if (c.isHuman && up > f && this.time - (c.upWarnAt === undefined ? -999 : c.upWarnAt) > 90) {
-            c.upWarnAt = this.time;
-            this.say(c.id, `⚠ Asker bakımı (−${up}₺) gelirini (+${f}₺) aşıyor; hazine eriyor. Para biterse askerler firar eder.`, 'bad');
-          }
-          c.money = Math.round(m * 100) / 100;
-          if (c.isHuman && f > 0) this.emit({ type: 'income', amount: Math.round((f - up) * 100) / 100, cid: c.id });
+          c.money = Math.round((c.money + f) * 100) / 100;
+          if (c.isHuman && f > 0) this.emit({ type: 'income', amount: f, cid: c.id });
         }
         if (c.queue > 0 && c.capital >= 0) {
           c.prodTimer += dt;

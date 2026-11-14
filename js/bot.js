@@ -86,18 +86,10 @@
       const t = game.citiesOf(cid).filter((x) => x.factories > 0 && !x.airDef && !game.isBorderCity(x.id))[0];
       if (t) game.cmdBuy(cid, 'airDef', { city: t.id });
     }
-    // barışta önce fabrikaya biriktir (ekonomi büyüsün)
-    const saving = !atWar && facs < want && game.citiesOf(cid).some((x) => game.factorySlots(x) < game.factoryLimit(cid));
+    // asker üretimi ücretsizdir; cephe/tehdit durumuna göre üretim sırasını dolu tut
     const threatened = game.neighborsOfCountry(cid).some((n) => game.countries[n] && game.countries[n].warRights && game.countries[n].warRights[cid] !== undefined);
-    const reserve = atWar || threatened ? 1 : saving ? fp + 2 : 4;
-    let spend = Math.floor((c.money - reserve) * (atWar ? 0.9 : 0.55) / game.price(cid, 'troop'));
-    // Asker bakımı: geliri aşacak kadar asker biriktirme. Barışta gelirin %55'i, savaşta %90'ı bakıma gidebilir;
-    // savaşta hazineden ~6 gelir turu (90 sn) daha bakım karşılanabilir.
-    const CFG = G.CFG, inc = game.incomeOf(cid);
-    const cap = game.upkeepFree(cid) + inc * (atWar || threatened ? 0.9 : 0.55) * CFG.upkeepPer + (atWar ? (Math.max(0, c.money) / 6) * CFG.upkeepPer : 0);
-    const room = Math.floor((cap - game.totalTroops(cid) - c.queue * 1000) / 1000);
-    spend = Math.min(spend, Math.max(0, room));
-    for (let i = 0; i < spend; i++) if (game.cmdQueueTroops(cid, 1).err) break;
+    const targetQ = atWar || threatened ? 12 : 5;
+    while (c.queue < targetQ) if (game.cmdQueueTroops(cid, 1).err) break;
   }
 
   function military(game, cid) {

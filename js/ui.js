@@ -472,11 +472,8 @@
       const incW = ((p.incomeTimer / G.CFG.incomeInterval) * 100).toFixed(1) + '%';
       if (this._lastIncW !== incW) { this._lastIncW = incW; this.$('tbInc').style.width = incW; }
       const f = g.factoriesOf(p.id);
-      // net gelir: fabrika geliri − asker bakımı (eksiye düşerse kırmızı)
-      const net = g.netIncome(p.id);
-      this._txt('tbIncTxt', `${net >= 0 ? '+' : '−'}${fmtMoney(Math.abs(net)).replace('₺', '')}₺ / ${G.CFG.incomeInterval} sn`);
-      const negInc = net < 0;
-      if (this._negInc !== negInc) { this._negInc = negInc; this.$('tbIncTxt').classList.toggle('neg', negInc); }
+      const inc = g.incomeOf(p.id);
+      this._txt('tbIncTxt', '+' + fmtMoney(inc).replace('₺', '') + `₺ / ${G.CFG.incomeInterval} sn`);
       // savaş yorgunluğu bayrağı
       const wy = Math.round((p.weary || 0) * 100);
       const wyOn = wy >= 3;
@@ -835,7 +832,7 @@
     // ---------- askeri yönetim (v3) ----------
     htmlMilitary() {
       const g = this.game, me = g.playerId, P = g.player;
-      const tp = g.price(me, 'troop'), up = g.price(me, 'upgrade');
+      const up = g.price(me, 'upgrade'), maxQ = G.CFG.maxTroopQueue;
       const armies = g.armies.filter((a) => a.owner === me);
       const cut = g.cutOffCities(me);
       const warn = cut.length ? `<div class="warnbox">${icon('warn', 'wi2')}
@@ -855,41 +852,31 @@
       // asker üretimi: halka gösterge + sıra düğmeleri + sınırlara dağıt
       const tt = g.troopTime(me);
       const prod = `<div class="mcard">
-          <div class="mc-h">${icon('factory')}<b>Asker üretimi</b><span class="mc-r">1k asker / ${+tt.toFixed(2)} sn · ${fmtMoney(tp)}</span></div>
+          <div class="mc-h">${icon('factory')}<b>Asker üretimi</b><span class="mc-r">1k asker / ${+tt.toFixed(2)} sn · ücretsiz</span></div>
           <div class="pr-body">
             <div class="ring" ${this.LV(() => (P.queue > 0 ? (P.prodTimer / g.troopTime(me)) * 100 : 0))}>
               <div class="ring-in"><b class="target">${this.LP(() => '+' + fmtK(P.queue * 1000))}</b><small>sırada</small></div></div>
             <div class="pr-ctl">
               <div class="qbtns"><button class="btn round" data-act="q" data-dir="-1" ${P.queue <= 0 ? 'disabled' : ''} title="Sıradan 1k çıkar">−</button>
-                <button class="btn green" data-act="q" data-dir="1" data-n="1" ${P.money < tp ? 'disabled' : ''}>+1k</button>
-                <button class="btn green" data-act="q" data-dir="1" data-n="5" ${P.money < tp ? 'disabled' : ''}>+5k</button>
-                <button class="btn green" data-act="q" data-dir="1" data-n="10" ${P.money < tp ? 'disabled' : ''}>+10k</button>
-                <button class="btn green" data-act="q" data-dir="1" data-n="max" ${P.money < tp ? 'disabled' : ''} title="Paranın yettiği kadar sıraya ekle">+Maks</button>
-                ${P.queue > 0 ? '<button class="btn sm" data-act="qclear" title="Tüm üretim sırasını temizle (ücret iade edilmez)">✕</button>' : ''}</div>
+                <button class="btn green" data-act="q" data-dir="1" data-n="1" ${P.queue >= maxQ ? 'disabled' : ''}>+1k</button>
+                <button class="btn green" data-act="q" data-dir="1" data-n="5" ${P.queue >= maxQ ? 'disabled' : ''}>+5k</button>
+                <button class="btn green" data-act="q" data-dir="1" data-n="10" ${P.queue >= maxQ ? 'disabled' : ''}>+10k</button>
+                <button class="btn green" data-act="q" data-dir="1" data-n="max" ${P.queue >= maxQ ? 'disabled' : ''} title="Sırayı en fazla ${maxQ}k askere doldur">+Maks</button>
+                ${P.queue > 0 ? '<button class="btn sm" data-act="qclear" title="Tüm üretim sırasını temizle">✕</button>' : ''}</div>
               <button class="tgl ${P.autoDist ? 'on' : ''}" data-act="autodist" role="switch" aria-checked="${!!P.autoDist}"
                 title="Açıkken üretilen askerler başkentte kalmaz; önce saldırı altındaki, sonra savaştığın ülkeye sınır olan, en az askeri olan şehre yürür.">
                 <span class="tgl-track"><i></i></span><span class="tgl-l">Sınırlara dağıt</span><span class="tgl-ar">»</span></button>
               <small class="pr-note">${this.L(() => (P.queue > 0 ? `Sıra ${Math.max(0, Math.ceil(P.queue * g.troopTime(me) - P.prodTimer))} sn'de biter` : 'Üretim yok'))} ·
                 ${this.L(() => (P.autoDist ? 'yeni askerler sınırlara yürür' : 'yeni askerler başkentte doğar'))}</small>
             </div></div></div>`;
-      // asker bakımı ve savaş yorgunluğu
-      const CF = G.CFG, upk0 = g.upkeepOf(me), net0 = g.netIncome(me);
-      const signed = (n) => (n >= 0 ? '+' : '−') + fmtMoney(Math.abs(n));
+      // savaş yorgunluğu kartı
+      const CF = G.CFG;
       const wyText = () => {
         const w = P.weary || 0, cut = Math.round(g.wearyCut(me) * 100), foes = g.warFoes(me);
         if (w < 0.01 && !foes) return `Barıştasın. Savaşta dakikada ~%${Math.round(CF.wearyWarRate * 6000)} artar (her ek cephe daha hızlı); şehir kaybetmek arttırır, şehir almak azaltır.`;
         return `Gelir ve asker üretimi −%${cut}. ${foes ? (foes > 1 ? `${foes} cephede savaş: hızla artıyor.` : 'Savaş sürdükçe artıyor; barış yaparsan geçer.') : 'Barıştasın: yavaş yavaş geçiyor.'}`;
       };
-      const upkCard = `<div class="mcard upk"><div class="mc-h">${icon('coin')}<b>Bakım ve moral</b><span class="mc-r">her ${CF.incomeInterval} sn</span></div>
-          <div class="upk-grid">
-            <div><small>Fabrika geliri</small><b class="pos">${this.L(() => signed(g.incomeOf(me)))}</b></div>
-            <div><small>Asker bakımı</small><b class="${upk0 > 0 ? 'neg' : ''}">${this.L(() => '−' + fmtMoney(g.upkeepOf(me)))}</b></div>
-            <div><small>Net</small><b class="${net0 < 0 ? 'neg' : 'pos'}">${this.L(() => signed(g.netIncome(me)))}</b></div>
-          </div>
-          <div class="upk-bar" title="Asker sayın (çizgi: bedava kapasite)">${this.LW(() => Math.min(100, (g.totalTroops(me) / Math.max(1, 2 * g.upkeepFree(me))) * 100))}<s style="left:50%"></s></div>
-          <p class="upk-note">${this.L(() => `${fmtK(g.totalTroops(me))} asker · ${fmtK(g.upkeepFree(me))} bedava (şehir başına ${fmtK(CF.upkeepFreePerCity)})`)} · fazlası için her ${fmtK(CF.upkeepPer)} asker = 1₺.
-            ${net0 < 0 ? '<span class="neg">Hazine eriyor: para biterse askerler firar eder.</span>' : ''}</p>
-          <div class="upk-sub"><b>Savaş yorgunluğu</b><span>${this.L(() => '%' + Math.round((P.weary || 0) * 100))}</span></div>
+      const wearyCard = `<div class="mcard upk"><div class="mc-h">${icon('warn')}<b>Savaş yorgunluğu</b><span class="mc-r">${this.L(() => '%' + Math.round((P.weary || 0) * 100))}</span></div>
           <div class="upk-bar wy">${this.LW(() => (P.weary || 0) * 100)}</div>
           <p class="upk-note">${this.L(wyText)}</p></div>`;
       // ekipman: saldırı ve savunma kartları
@@ -928,7 +915,7 @@
         ${armies.length ? `<div class="army-grid">${armies.map(armyCard).join('')}</div><small class="note"><b>+ Birlik</b> veya birlik seçiliyken alttaki <b>+ ⚑ Ordu</b> düğmesiyle sonradan birlik ekleyebilirsin; ordunun şehrine giden askerler de katılır.</small>`
           : '<div class="army-empty">Ordular kendi kendine savaşır: <b>Taarruz</b> ordusu düşman şehirlerini işgal eder, <b>Savunma</b> ordusu sınırlarını korur ve kaybedilen şehirleri geri alır. <b>+ Ordu Kur</b>\'a bas, birliklerini haritada işaretle.</div>'}</div>`;
       const tap = this.mode === 'pc' ? 'tıkla' : 'dokun';
-      return `<div class="mil scroll">${warn}${hero}${prod}${upkCard}${equip}${ideoSect}${armySect}
+      return `<div class="mil scroll">${warn}${hero}${prod}${wearyCard}${equip}${ideoSect}${armySect}
         <p class="note">Birliğe ${tap} → miktarı seç → hedef şehre ${tap}.${this.mode === 'pc' ? ' Q: iptal.' : ''}</p></div>`;
     }
 
@@ -1021,7 +1008,7 @@
       const ideo = g.ideo(me);
       const treasury = `<div class="treasury"><span class="tr-ic">${icon('coin')}</span>
           <div class="tr-m"><small>Hazine</small><b>${this.L(() => fmtMoney(P.money))}</b></div>
-          <div class="tr-inc"><small>Gelir <b>+${inc}₺</b>${g.upkeepOf(me) > 0 ? ` − bakım <b>${g.upkeepOf(me)}₺</b>` : ''} / ${G.CFG.incomeInterval} sn</small><div class="bar">${this.LW(() => (P.incomeTimer / G.CFG.incomeInterval) * 100)}</div>
+          <div class="tr-inc"><small>Gelir <b>+${inc}₺</b> / ${G.CFG.incomeInterval} sn</small><div class="bar">${this.LW(() => (P.incomeTimer / G.CFG.incomeInterval) * 100)}</div>
             <small>${this.L(() => 'sonraki ödeme ' + Math.max(0, Math.ceil(G.CFG.incomeInterval - P.incomeTimer)) + ' sn')}${ideo.price < 1 ? ` · ${esc(ideo.name)}: fiyatlar %${Math.round((1 - ideo.price) * 100)} ucuz` : ''}</small></div></div>`;
       const groups = GROUPS.map((gr) => `<h5 class="sh-h ${gr.cls}">${icon(gr.ic)}${gr.t}</h5>
         <div class="shop-grid">${gr.keys.map((k) => card(SHOP.find((s) => s.key === k), gr.cls)).join('')}</div>`).join('');
@@ -1060,14 +1047,13 @@
         case 'join': res(g.cmdJoinRequest(me, id), 'Katılma başvurusu tüm üyelere gönderildi.'); break;
         case 'leave': res(g.cmdLeaveAlliance(me), 'İttifaktan ayrıldın.'); break;
         case 'q': {
-          // +1k / +5k / +10k / +Maks: parası yettiği kadar sıraya ekler
-          const tp = g.price(me, 'troop');
-          const n = b.dataset.n === 'max' ? Math.max(1, Math.min(500, Math.floor(g.player.money / tp))) : Math.max(1, +b.dataset.n || 1);
+          // +1k / +5k / +10k / +Maks: sıraya ücretsiz ekler (en fazla maxTroopQueue)
+          const n = b.dataset.n === 'max' ? Math.max(1, G.CFG.maxTroopQueue - g.player.queue) : Math.max(1, +b.dataset.n || 1);
           const dir = +b.dataset.dir;
           let r = null, done = 0;
           for (let i = 0; i < n; i++) { r = g.cmdQueueTroops(me, dir); if (r.err) break; done++; }
           if (done > 0 && b.dataset.n === 'max') this.toast(`+${done}k asker sıraya eklendi`, 'good');
-          else if (done > 0 && n > 1 && r && r.err) this.toast(`Para yettiği kadar sıraya eklendi: +${done}k`, 'info');
+          else if (done > 0 && n > 1 && r && r.err) this.toast(`Sıra sınırına kadar eklendi: +${done}k`, 'info');
           res(done > 0 ? { ok: true } : r);
           break;
         }
@@ -1498,9 +1484,7 @@
       senden en uzak %25'i isyancılara kalır.
       Haritada senden başka yalnızca müttefiklerin kalınca kazanırsın.</p></section>
     <section><h4>🏭 Başlangıç ve ekonomi</h4><p>Önce fabrikalarını kuracağın kendi şehrini seç. Her fabrika <b>15 sn'de 1₺</b> verir, yenisi 6 sn'de kurulur.
-      Kendi toprağın üzerinden hiçbir fabrikaya bağlı olmayan şehirlerdeki askerler <b>❗ %50 zayıf ve yavaştır</b>.</p>
-      <p><b>💰 Asker bakımı:</b> her şehrin <b>4k askeri bedava</b> beslenir; fazlası için her gelir turunda <b>her 20k asker 1₺</b> yer.
-      Hazine bakımı karşılamazsa askerlerin bir kısmı <b>firar eder</b>. Üst çubuktaki gelir bakım düşülmüş net gelirdir.</p></section>
+      Kendi toprağın üzerinden hiçbir fabrikaya bağlı olmayan şehirlerdeki askerler <b>❗ %50 zayıf ve yavaştır</b>.</p></section>
     <section><h4>⚔ Asker ve savaş</h4><p>Birliğe (haritadaki asker sayısına) dokun, miktarı seç, hedef şehre dokun: kendi şehrine taşır, <b>komşu düşman şehrine saldırır</b>.
       Saldırı sınırda hemen başlar; büyük birlik şehri daha çabuk alır. Bir ülkeye saldırmak için önce Diplomasi'den <b>savaş hakkı</b> alıp (20 sn) savaş ilan et.
       Saldırdığın şehrin çıkış şehri saldırıya uğrarsa birliğin yarısı savunmaya döner.</p>
@@ -1508,7 +1492,7 @@
       şehir almak azaltır. Yorgunluk <b>gelirini ve asker üretimini en çok %50</b> düşürür, barışta yavaşça geçer. Yorgun ülkeler barışa daha yatkındır.</p></section>
     <section><h4>🤝 Diplomasi</h4><p>Talep, destek ve takas teklif et; ittifak kur ya da bir ittifaka katıl; barış teklif et ya da teslim ol.
       İlişkiler tekliflerin kabul edilme şansını etkiler. Müttefiklerini savaşa çağırabilirsin.</p></section>
-    <section><h4>🎖 Askeri yönetim ve mağaza</h4><p>Asker üret (+1k = 1₺), <b>Sınırlara dağıt</b> ile yeni askerleri cepheye yolla, saldırı/savunma geliştir,
+    <section><h4>🎖 Askeri yönetim ve mağaza</h4><p>Asker üret (ücretsiz · 2 sn / 1k), <b>Sınırlara dağıt</b> ile yeni askerleri cepheye yolla, saldırı/savunma geliştir,
       ideolojine özel geliştirmeleri al, ordu kur. Mevcut orduya <b>+ Birlik</b> düğmesiyle, birlik seçiliyken alttaki ordu düğmeleriyle veya ordunun şehrine asker göndererek sonradan birlik ekleyebilirsin. Mağazada fabrika, blitzkrieg, uçak, füze, isyan ve savunmalar var.</p></section>
     <section><h4>⛰ Yer şekilleri</h4><p>Her şehrin bir arazisi var (şehrin üzerine gel ya da birlik seçince düşman komşularda rozet olarak görünür):
       <b>🏔 Dağ</b> savunma +%40 ve işgal %30 yavaş · <b>⛰ Tepe</b> savunma +%20, işgal %15 yavaş · <b>🌲 Orman</b> savunma +%15, işgal %15 yavaş ·

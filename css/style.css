@@ -173,21 +173,11 @@ body:not(.mobile) #sndBtn { display: block; }
 .tb-flag.weary.hi { background: #8a3a1c; }
 .tb-flag.weary.max { background: var(--red); animation: pulse 1.6s ease-in-out infinite; }
 .tb-stat small.neg { color: var(--red); font-weight: bold; }
-/* asker bakımı ve savaş yorgunluğu kartı */
-.upk-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 8px; }
-.upk-grid > div { background: rgba(91,65,38,.07); border-radius: 6px; padding: 5px 7px; display: flex; flex-direction: column; }
-.upk-grid small { font-size: 11.5px; color: var(--ink3); }
-.upk-grid b { font-size: 16px; font-variant-numeric: tabular-nums; }
-.upk-grid b.neg, .upk-note .neg { color: var(--red); }
-.upk-grid b.pos { color: #2f6a24; }
-.upk-bar { position: relative; height: 10px; border-radius: 5px; background: rgba(91,65,38,.15); overflow: hidden; margin: 2px 0 4px; }
-.upk-bar > i { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, #6f8f3a, #b9952e); border-radius: 5px; transition: width .4s; }
+/* savaş yorgunluğu kartı */
+.upk-bar { position: relative; height: 10px; border-radius: 5px; background: rgba(91,65,38,.15); overflow: hidden; margin: 2px 0 6px; }
+.upk-bar > i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 5px; transition: width .4s; }
 .upk-bar.wy > i { background: linear-gradient(90deg, #c9a24a, #b4471f 60%, #8e1f12); }
-.upk-bar > s { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--ink); opacity: .7; }
 .upk-note { font-size: 12.5px; color: var(--ink2); margin: 2px 0 0; }
-.upk-sub { display: flex; align-items: baseline; gap: 6px; margin-top: 9px; }
-.upk-sub b { font-family: var(--font-sc); font-weight: normal; font-size: 15px; flex: 1; }
-.upk-sub span { font-size: 13px; font-variant-numeric: tabular-nums; }
 .spd-box { display: inline-flex; border: 1px solid var(--ink3); border-radius: 4px; overflow: hidden; background: rgba(255,250,235,.48); }
 .spd-box button { border: none; background: transparent; color: var(--ink2); font-family: var(--font-sc); font-size: 13px; padding: 3px 7px; cursor: pointer; line-height: 1.2; transition: background .12s, color .12s; }
 .spd-box button + button { border-left: 1px solid rgba(91,65,38,.3); }
