@@ -67,6 +67,9 @@ bir sonraki açılışta yeni sürümü alır.
   uzaklaştıkça (ve minimapte) ülke renkleri belirginleşir. Sınırlar açık renkli çizgilerle görünür. Oyun menüsünden ya da
   **G** tuşuyla eski parşömen haritaya geçilebilir (orada yer şekilleri mürekkep işaretleriyle çizilir); seçim cihazda hatırlanır.
   Arazi oyun açılırken ~0,5 sn'de, dilimler hâlinde üretilir.
+- **Yapı modelleri:** fabrikalar haritada testere dişli çatılı, bantlı bacasından duman tüten tuğla binalar; inşaattaki
+  fabrika iskele ve vinçle, altında dolan çubukla görünür. Şehir savunması kuleli, mazgallı, ülke bayrağı dalgalanan bir
+  kale; hava koruma kum torbalı uçaksavar ve dönen radar çanağıdır. Modeller yakınlaştıkça büyür.
 - **Yer şekilleri savaşı etkiler:** her şehrin arazisi, uydu görünümündeki yükseklik ve nemden belirlenir:
 
   | Arazi | Savunma | İşgal süresi |

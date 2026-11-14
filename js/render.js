@@ -930,7 +930,8 @@
         }
         this._capVer = this.version;
       }
-      const w = 11 * s, invDur = 1 / G.CFG.factoryBuildTime;
+      const invDur = 1 / G.CFG.factoryBuildTime;
+      const mS = this.modelScale(), now = performance.now();
       const markFn = this.ui.targeting && this.ui.targeting.mark;
       const nameFont = showNames ? `italic ${11.5 * s}px ${FONT}` : '';
       const markFont = markFn ? `bold ${11 * s}px ${FONT}` : '';
@@ -940,15 +941,7 @@
         const [sx, sy] = this.toScreen(city.x, city.y);
         const isCap = capitals.has(city.id);
         if (isCap) ctx.drawImage(this.capSprite(city.id === g.player.capital), sx - 13 * s, sy - 37 * s, 26 * s, 26 * s);
-        const nb = city.building.length, cnt = city.factories + nb + (city.cityDef ? 1 : 0) + (city.airDef ? 1 : 0);
-        if (cnt > 0) {
-          const x0 = sx - (cnt * w) / 2 + w / 2, iy = sy + 24 * s;
-          let idx = 0;
-          for (let j = 0; j < city.factories; j++) this.icon(ctx, 'f', x0 + (idx++) * w, iy, s);
-          for (let j = 0; j < nb; j++) this.buildIcon(ctx, x0 + (idx++) * w, iy, s, U.clamp(1 - (city.building[j] - g.time) * invDur, 0, 1));
-          if (city.cityDef) this.icon(ctx, 'd', x0 + (idx++) * w, iy, s);
-          if (city.airDef) this.icon(ctx, 'a', x0 + (idx++) * w, iy, s);
-        }
+        if (city.factories || city.building.length || city.cityDef || city.airDef) this.drawCityModels(ctx, city, sx, sy, mS, now, invDur);
         const mk = markFn ? markFn(city.id) : null;
         if (mk) {
           const txt = mk === 'give' ? 'Ver' : 'Al';
@@ -989,8 +982,8 @@
         if (T.def !== 1) txt += ` ${T.def > 1 ? '+' : '−'}%${Math.round(Math.abs(T.def - 1) * 100)}`;
         if (h > 1) txt += ' ⬇'; else if (h < 1) txt += ' ⬆';
         const net = h / T.def;
-        const cnt = c.factories + c.building.length + (c.cityDef ? 1 : 0) + (c.airDef ? 1 : 0);
-        const bw = this.measureCached(ctx, font, txt) + 12 * s, bx = sx, by = sy + (cnt ? 40 : 26) * s;
+        const rowsN = this.modelRowsCount(c);
+        const bw = this.measureCached(ctx, font, txt) + 12 * s, bx = sx, by = rowsN ? sy + (38 + (rowsN - 1) * 25 + 13) * this.modelScale() : sy + 26 * s;
         ctx.fillStyle = net < 0.97 ? 'rgba(122,38,22,0.92)' : net > 1.03 ? 'rgba(40,92,32,0.92)' : 'rgba(74,58,40,0.92)';
         ctx.beginPath(); ctx.ellipse(bx, by, bw / 2, 9.5 * s, 0, 0, Math.PI * 2); ctx.fill();
         ctx.lineWidth = 1.5; ctx.strokeStyle = '#fbf1d6'; ctx.stroke();
@@ -998,17 +991,181 @@
       }
     }
 
-    // inşaattaki fabrika: yarı saydam bina + altında dolan çubuk
-    buildIcon(ctx, x, y, s, p) {
-      ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
-      ctx.globalAlpha = 0.45 + 0.4 * p;
-      ctx.fillStyle = '#4a3420';
-      ctx.beginPath(); ctx.moveTo(-5, 4); ctx.lineTo(-5, -1); ctx.lineTo(-2, -3); ctx.lineTo(-2, -1); ctx.lineTo(1, -3); ctx.lineTo(1, -1);
-      ctx.lineTo(3, -1); ctx.lineTo(3, -6); ctx.lineTo(5, -6); ctx.lineTo(5, 4); ctx.closePath(); ctx.fill();
-      ctx.globalAlpha = 1;
-      ctx.fillStyle = 'rgba(40,24,10,0.5)'; ctx.fillRect(-5, 6, 10, 2.2);
-      ctx.fillStyle = '#e2b84a'; ctx.fillRect(-5, 6, 10 * p, 2.2);
-      ctx.restore();
+    // ---------- şehir yapılarının modelleri (fabrika, kale, hava savunma) ----------
+    // Yakınlaştıkça büyür; uzakta küçülür ama okunur kalır.
+    modelScale() { return this.ui.scale * U.clamp(0.42 + 0.7 * this.cam.zoom, 0.66, 1.75); }
+
+    // Yapıların yerleşimi: şehrin altında satırlar (kale, hava savunma, fabrikalar, inşaattakiler).
+    // Satır en fazla ~110 birim genişlikte; dolarsa alta yeni satır açılır.
+    cityModelLayout(city) {
+      const items = [];
+      if (city.cityDef) items.push({ k: 'fort', w: 38 });
+      if (city.airDef) items.push({ k: 'aa', w: 28 });
+      for (let j = 0; j < city.factories; j++) items.push({ k: 'f', w: 30 });
+      for (let j = 0; j < city.building.length; j++) items.push({ k: 'b', w: 30, j });
+      const rows = [[]];
+      let rw = 0;
+      for (const it of items) {
+        if (rw + it.w > 112 && rows[rows.length - 1].length) { rows.push([]); rw = 0; }
+        rows[rows.length - 1].push(it); rw += it.w;
+      }
+      return rows;
+    }
+    modelRowsCount(city) {
+      const n = city.factories + city.building.length + (city.cityDef ? 1 : 0) + (city.airDef ? 1 : 0);
+      return n ? this.cityModelLayout(city).length : 0;
+    }
+
+    drawCityModels(ctx, city, sx, sy, m, now, invDur) {
+      const g = this.game, rows = this.cityModelLayout(city);
+      const smoke = this.cam.zoom >= 0.32;
+      const color = (g.countries[city.owner] || {}).color || '#888';
+      for (let r = 0; r < rows.length; r++) {
+        const row = rows[r];
+        let tw = 0; for (const it of row) tw += it.w;
+        let x = sx - (tw * m) / 2;
+        const base = sy + (38 + r * 25) * m; // satırın zemin çizgisi
+        for (const it of row) {
+          const cx = x + (it.w * m) / 2;
+          if (it.k === 'fort') { this.drawModel(ctx, this.modelSprite('fort'), cx, base, m); this.fortFlag(ctx, cx, base, m, color, now, city.id); }
+          else if (it.k === 'aa') { this.drawModel(ctx, this.modelSprite('aa'), cx, base, m); this.aaRadar(ctx, cx, base, m, now, city.id); }
+          else if (it.k === 'f') {
+            this.drawModel(ctx, this.modelSprite('factory'), cx, base, m);
+            if (smoke) this.factorySmoke(ctx, cx + 8 * m, base - 25 * m, m, now, city.id * 3.1 + x * 0.013);
+          } else {
+            const p = U.clamp(1 - (city.building[it.j] - g.time) * invDur, 0, 1);
+            ctx.globalAlpha = 0.3 + 0.45 * p;
+            this.drawModel(ctx, this.modelSprite('factory'), cx, base, m);
+            ctx.globalAlpha = 1;
+            this.drawModel(ctx, this.modelSprite('scaffold'), cx, base, m);
+            ctx.fillStyle = 'rgba(40,24,10,0.6)'; ctx.fillRect(cx - 11 * m, base + 2.5 * m, 22 * m, 3 * m);
+            ctx.fillStyle = '#e2b84a'; ctx.fillRect(cx - 11 * m, base + 2.5 * m, 22 * m * p, 3 * m);
+          }
+          x += it.w * m;
+        }
+      }
+    }
+    // sprite: birim koordinatlı çizim, alt orta noktası (ax, ay) zemine oturur
+    drawModel(ctx, sp, x, y, m) { ctx.drawImage(sp.c, x - sp.ax * m, y - sp.ay * m, sp.w * m, sp.h * m); }
+
+    modelSprite(kind) {
+      const cache = this._mdl || (this._mdl = {});
+      if (cache[kind]) return cache[kind];
+      const R = 4; // birim başına piksel (keskin görünüm için)
+      const dims = { factory: [34, 34, 17, 31], fort: [42, 36, 21, 32], aa: [30, 26, 15, 22], scaffold: [34, 34, 17, 31] }[kind];
+      const [w, h, ax, ay] = dims;
+      const c = document.createElement('canvas'); c.width = w * R; c.height = h * R;
+      const x = c.getContext('2d');
+      x.scale(R, R); x.translate(ax, ay); x.lineJoin = 'round'; x.lineCap = 'round';
+      const poly = (pts, fill, stroke, lw) => {
+        x.beginPath(); pts.forEach((p, i) => (i ? x.lineTo(p[0], p[1]) : x.moveTo(p[0], p[1]))); x.closePath();
+        if (fill) { x.fillStyle = fill; x.fill(); }
+        if (stroke) { x.strokeStyle = stroke; x.lineWidth = lw || 0.7; x.stroke(); }
+      };
+      const shadow = (rx, ry) => { x.fillStyle = 'rgba(0,0,0,0.32)'; x.beginPath(); x.ellipse(1.5, 0.5, rx, ry, 0, 0, Math.PI * 2); x.fill(); };
+      const OUT = 'rgba(28,18,10,0.9)';
+      const DX = 5, DY = -3.5; // eğik izdüşüm derinliği (sağa-yukarı)
+      if (kind === 'factory' || kind === 'scaffold') {
+        if (kind === 'factory') {
+          shadow(16, 3.2);
+          // sağ yan yüz
+          poly([[9, 0], [9 + DX, DY], [9 + DX, -10 + DY], [9, -10]], '#5e3020', OUT);
+          // ön yüz (tuğla)
+          poly([[-14, 0], [9, 0], [9, -10], [-14, -10]], '#9a5236', OUT);
+          x.strokeStyle = 'rgba(60,26,14,0.35)'; x.lineWidth = 0.35;
+          for (let yy = -2.5; yy > -10; yy -= 2.5) { x.beginPath(); x.moveTo(-14, yy); x.lineTo(9, yy); x.stroke(); }
+          // pencereler
+          x.fillStyle = '#f2d27a';
+          for (let wx = -12; wx < 6; wx += 4.5) x.fillRect(wx, -7.5, 2.4, 3.2);
+          x.fillStyle = 'rgba(40,20,10,0.55)'; x.fillRect(-1.5, -4, 4, 4); // kapı
+          // testere dişli çatı (camlı yüzler aydınlık)
+          for (let k = 0; k < 3; k++) {
+            const x0 = -14 + k * 7.67, x1 = x0 + 7.67;
+            poly([[x0, -10], [x0 + DX, -10 + DY], [x0 + DX, -16 + DY], [x0, -16]], '#9cc6da', OUT, 0.5);
+            poly([[x0, -16], [x0 + DX, -16 + DY], [x1 + DX, -10 + DY], [x1, -10]], '#6b6f78', OUT, 0.5);
+          }
+          // baca (kırmızı-beyaz bantlı)
+          poly([[5.5, -10], [10.5, -10], [10, -25], [6, -25]], '#7a3a26', OUT);
+          x.fillStyle = '#efe6d6'; x.fillRect(6.1, -22.5, 3.8, 1.6); x.fillRect(6.2, -18.5, 3.6, 1.4);
+          poly([[5.6, -25], [10.4, -25], [10.4, -26.3], [5.6, -26.3]], '#3a2216', OUT, 0.5);
+        } else {
+          // inşaat iskelesi + vinç
+          x.strokeStyle = '#c99a4a'; x.lineWidth = 0.9;
+          for (const px of [-14, -6, 2, 9]) { x.beginPath(); x.moveTo(px, 0); x.lineTo(px, -15); x.stroke(); }
+          for (const py of [-5, -10, -15]) { x.beginPath(); x.moveTo(-14, py); x.lineTo(9, py); x.stroke(); }
+          x.beginPath(); x.moveTo(-14, 0); x.lineTo(-6, -10); x.moveTo(2, 0); x.lineTo(9, -10); x.stroke();
+          x.strokeStyle = '#e2b84a'; x.lineWidth = 1.1;
+          x.beginPath(); x.moveTo(12, 0); x.lineTo(12, -27); x.lineTo(-8, -27); x.stroke();
+          x.lineWidth = 0.5; x.beginPath(); x.moveTo(-5, -27); x.lineTo(-5, -19); x.stroke();
+          x.fillStyle = '#5a4630'; x.fillRect(-6.5, -19, 3, 2);
+        }
+      } else if (kind === 'fort') {
+        shadow(20, 3.6);
+        const ST = '#b3a993', STD = '#857b67', STL = '#cfc6b0';
+        const crenel = (x0, x1, y, step) => { x.fillStyle = STL; for (let px = x0; px < x1 - 0.5; px += step) { x.fillRect(px, y - 2, step * 0.55, 2); x.strokeStyle = OUT; x.lineWidth = 0.35; x.strokeRect(px, y - 2, step * 0.55, 2); } };
+        // iç kale (arka)
+        poly([[-5, -10], [5, -10], [5, -22], [-5, -22]], ST, OUT);
+        poly([[5, -10], [5 + DX * 0.7, -10 + DY * 0.7], [5 + DX * 0.7, -22 + DY * 0.7], [5, -22]], STD, OUT);
+        crenel(-5, 5, -22, 2.5);
+        x.fillStyle = 'rgba(30,20,12,0.7)'; x.fillRect(-1, -19, 2, 3);
+        // sur (ön)
+        poly([[-14, 0], [14, 0], [14, -9], [-14, -9]], ST, OUT);
+        crenel(-14, 14, -9, 2.8);
+        x.strokeStyle = 'rgba(70,60,46,0.45)'; x.lineWidth = 0.35;
+        for (let yy = -3; yy > -9; yy -= 3) { x.beginPath(); x.moveTo(-14, yy); x.lineTo(14, yy); x.stroke(); }
+        // kapı (kemerli)
+        x.fillStyle = '#3a2614'; x.beginPath(); x.moveTo(-3, 0); x.lineTo(-3, -4.5); x.arc(0, -4.5, 3, Math.PI, 0); x.lineTo(3, 0); x.closePath(); x.fill();
+        x.strokeStyle = '#6e5a3c'; x.lineWidth = 0.4; for (let px = -2; px <= 2; px += 1.3) { x.beginPath(); x.moveTo(px, 0); x.lineTo(px, -6.5); x.stroke(); }
+        // kuleler
+        for (const tx of [-17, 11]) {
+          poly([[tx, 0], [tx + 6, 0], [tx + 6, -15], [tx, -15]], ST, OUT);
+          poly([[tx + 6, 0], [tx + 6 + DX * 0.5, DY * 0.5], [tx + 6 + DX * 0.5, -15 + DY * 0.5], [tx + 6, -15]], STD, OUT);
+          crenel(tx, tx + 6, -15, 2);
+          x.fillStyle = 'rgba(30,20,12,0.75)'; x.fillRect(tx + 2.4, -11, 1.2, 3);
+        }
+      } else if (kind === 'aa') {
+        shadow(14, 3);
+        // kum torbası çemberi
+        x.fillStyle = '#b9a473'; x.strokeStyle = OUT; x.lineWidth = 0.45;
+        for (let k = 0; k < 9; k++) { const px = -12 + k * 3; x.beginPath(); x.ellipse(px, -1.6, 1.9, 1.5, 0, 0, Math.PI * 2); x.fill(); x.stroke(); }
+        for (let k = 0; k < 8; k++) { const px = -10.5 + k * 3; x.beginPath(); x.ellipse(px, -4, 1.9, 1.4, 0, 0, Math.PI * 2); x.fill(); x.stroke(); }
+        // top kaidesi + çift namlu
+        poly([[-5, -4], [5, -4], [3.5, -8], [-3.5, -8]], '#4f5d3a', OUT);
+        x.strokeStyle = '#2c3324'; x.lineWidth = 1.3;
+        x.beginPath(); x.moveTo(-1, -7.5); x.lineTo(7, -18); x.moveTo(1, -7); x.lineTo(9, -17); x.stroke();
+        x.strokeStyle = '#1a1e16'; x.lineWidth = 0.5;
+        x.beginPath(); x.moveTo(-1, -7.5); x.lineTo(7, -18); x.moveTo(1, -7); x.lineTo(9, -17); x.stroke();
+        x.fillStyle = '#3d4a2e'; x.beginPath(); x.arc(0, -7.5, 2.4, 0, Math.PI * 2); x.fill(); x.strokeStyle = OUT; x.lineWidth = 0.5; x.stroke();
+        // radar direği (çanak her karede döner)
+        x.strokeStyle = '#4a4a44'; x.lineWidth = 0.8; x.beginPath(); x.moveTo(-9, -4); x.lineTo(-9, -12); x.stroke();
+      }
+      cache[kind] = { c, w, h, ax, ay };
+      return cache[kind];
+    }
+    // fabrika bacasından yükselen duman
+    factorySmoke(ctx, x, y, m, now, seed) {
+      for (let k = 0; k < 3; k++) {
+        const ph = (now / 2200 + k / 3 + seed) % 1;
+        const r = (1.4 + ph * 3.6) * m;
+        ctx.fillStyle = `rgba(214,212,206,${(0.55 * (1 - ph)).toFixed(3)})`;
+        ctx.beginPath(); ctx.arc(x + ph * 7 * m + Math.sin(ph * 6 + seed) * m, y - ph * 15 * m, r, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    // kalenin burcunda ülke bayrağı (dalgalanır)
+    fortFlag(ctx, x, y, m, color, now, id) {
+      const px = x, top = y - 31 * m, fw = 7 * m, fh = 4.5 * m, wv = Math.sin(now / 260 + id) * 0.9 * m;
+      ctx.strokeStyle = '#3a2614'; ctx.lineWidth = Math.max(1, 0.7 * m);
+      ctx.beginPath(); ctx.moveTo(px, y - 22 * m); ctx.lineTo(px, top); ctx.stroke();
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.moveTo(px, top); ctx.quadraticCurveTo(px + fw * 0.5, top - wv, px + fw, top + wv * 0.5);
+      ctx.lineTo(px + fw, top + fh + wv * 0.5); ctx.quadraticCurveTo(px + fw * 0.5, top + fh - wv, px, top + fh); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = 'rgba(28,18,10,0.8)'; ctx.lineWidth = Math.max(0.6, 0.4 * m); ctx.stroke();
+    }
+    // hava savunmanın dönen radar çanağı
+    aaRadar(ctx, x, y, m, now, id) {
+      const cx = x - 9 * m, cy = y - 12.5 * m, a = now / 700 + id, rx = Math.abs(Math.cos(a)) * 3.2 * m + 0.6 * m;
+      ctx.fillStyle = '#c9cdc4'; ctx.strokeStyle = 'rgba(28,18,10,0.85)'; ctx.lineWidth = Math.max(0.6, 0.45 * m);
+      ctx.beginPath(); ctx.ellipse(cx, cy, rx, 2.6 * m, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     }
 
     // Önbellekli başkent yıldızı (oyuncu başkentine ekstra altın hale)
@@ -1037,36 +1194,6 @@
       return c;
     }
 
-    icon(ctx, kind, x, y, s) {
-      const cache = this._icSpr || (this._icSpr = {});
-      let sp = cache[kind];
-      if (!sp) {
-        sp = document.createElement('canvas');
-        sp.width = sp.height = 40;
-        const c = sp.getContext('2d');
-        c.translate(20, 20); c.scale(2, 2);
-        c.lineWidth = 1; c.strokeStyle = INK;
-        if (kind === 'f') {
-          c.fillStyle = '#4a3420';
-          c.beginPath(); c.moveTo(-5, 4); c.lineTo(-5, -1); c.lineTo(-2, -3); c.lineTo(-2, -1); c.lineTo(1, -3); c.lineTo(1, -1);
-          c.lineTo(3, -1); c.lineTo(3, -6); c.lineTo(5, -6); c.lineTo(5, 4); c.closePath(); c.fill();
-          c.strokeStyle = 'rgba(241,226,184,0.45)'; c.lineWidth = 0.6; c.stroke();
-        } else if (kind === 'd') {
-          c.fillStyle = '#6d7f96';
-          c.beginPath(); c.moveTo(0, -6); c.lineTo(5, -4); c.lineTo(4, 2); c.lineTo(0, 5); c.lineTo(-4, 2); c.lineTo(-5, -4); c.closePath(); c.fill(); c.stroke();
-          c.strokeStyle = 'rgba(241,226,184,0.5)'; c.lineWidth = 0.7;
-          c.beginPath(); c.moveTo(0, -4); c.lineTo(0, 3); c.stroke();
-        } else if (kind === 'a') {
-          c.fillStyle = '#2f6d6a';
-          c.beginPath(); c.moveTo(-4, 5); c.lineTo(0, -1); c.lineTo(4, 5); c.closePath(); c.fill();
-          c.strokeStyle = '#2f6d6a'; c.lineWidth = 1.4;
-          c.beginPath(); c.arc(0, -1, 4, -Math.PI * 0.85, -Math.PI * 0.15); c.stroke();
-          c.beginPath(); c.arc(0, -1, 7, -Math.PI * 0.8, -Math.PI * 0.2); c.stroke();
-        }
-        cache[kind] = sp;
-      }
-      ctx.drawImage(sp, x - 10 * s, y - 10 * s, 20 * s, 20 * s);
-    }
 
     // Fabrikaya bağlı olmayan (zayıf) birliklerin üstündeki uyarı işareti: sarı üçgen + ünlem
     weakBadge(ctx, x, y, size) {
