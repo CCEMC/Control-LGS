@@ -10,7 +10,7 @@
     { key: 'cityDef', name: 'Şehir Savunması', desc: 'Seçtiğin şehirde savunma 2 kat.', target: 'own' },
     { key: 'factory', name: 'Fabrika', desc: '+1₺ / 15 sn. 6 sn\'de kurulur; bağlı şehirlerdeki askerleri güçlü tutar.', target: 'own' },
     { key: 'factoryLimit', name: 'Fabrika Limiti', desc: 'Şehir başına fabrika sınırı +1.', target: null },
-    { key: 'plane', name: 'Uçak', desc: 'Başkentten bir iç şehre en fazla 15k asker çıkarır.', target: 'plane' },
+    { key: 'plane', name: 'Uçak', desc: 'Başkentten iç ya da sınır şehrine en fazla 15k asker çıkarır.', target: 'plane' },
     { key: 'rebellion', name: 'İsyan Çıkar', desc: 'Seçtiğin ülkede 5k+ askerli rastgele bir şehir isyan eder.', target: 'country' },
     { key: 'missile', name: 'Füze', desc: 'Başkent dışı bir şehirde tüm asker ve yapıları yok eder.', target: 'missile' },
     { key: 'airDef', name: 'Hava Koruma', desc: 'Uçak çıkarmasını engeller, füzeleri %15 düşürür.', target: 'own' },
@@ -1133,7 +1133,7 @@
             (cid) => done(g.cmdBuy(me, 'missile', { city: cid }), `Füze ${g.cities[cid].name} şehrine fırlatıldı!`));
           break;
         case 'plane':
-          startTarget('Uçak çıkarması için iç şehir seç (sınırda olmayan, başkent değil)', (cid) => g.planeTargetError(me, cid),
+          startTarget('Uçak çıkarması için şehir seç (iç ya da sınır şehri, başkent değil)',(cid) => g.planeTargetError(me, cid),
             (cid) => this.planeDialog(cid));
           break;
         case 'rebellion': {
@@ -1333,9 +1333,10 @@
           <button class="btn big green" data-gm="resume">▶ Devam Et</button>
           <button class="btn" data-gm="sound">${G.Audio && G.Audio.muted ? '🔇 Ses kapalı — aç' : '🔊 Ses açık — kapat'}</button>
           ${volBox}
+          <button class="btn" data-gm="view">${this.renderer && this.renderer.view === 'eski' ? '🗺 Görünüm: Eski harita — uyduya geç' : '🛰 Görünüm: Uydu (yer şekilleri) — eski haritaya geç'}</button>
           <button class="btn" data-gm="help">📖 Nasıl Oynanır</button>
           <button class="btn red" data-gm="menu">🏠 Ana Menüye Dön</button>
-          ${this.mode !== 'mobile' ? '<p class="gm-keys"><b>Kısayollar:</b> WASD kamera · 1–4 menüler · Boşluk başkent · Q iptal · P duraklat · M ses</p>' : ''}
+          ${this.mode !== 'mobile' ? '<p class="gm-keys"><b>Kısayollar:</b> WASD kamera · 1–4 menüler · Boşluk başkent · Q iptal · P duraklat · M ses · G görünüm</p>' : ''}
           <p class="gm-info">${esc(g.player.name)} · ${esc(((G.MapGen.TYPES.find((t) => t.key === g.mapType)) || { name: 'Kıta' }).name)} haritası · ${fmtTime(g.time)} · Control-LGS ${G.VERSION_LABEL}</p></div>`;
       this.dialog(sp ? '⏸ Duraklatıldı' : '☰ Oyun Menüsü', body, [], false, (e) => {
         const b = e.target.closest('[data-gm]');
@@ -1343,6 +1344,7 @@
         const a = b.dataset.gm;
         if (a === 'resume') this.closeDialog();
         else if (a === 'sound') { if (this.onToggleSound) this.onToggleSound(); this.closeDialog(); this.openGameMenu(); }
+        else if (a === 'view') { if (this.renderer) this.renderer.setView(this.renderer.view === 'eski' ? 'arazi' : 'eski'); this.closeDialog(); this.openGameMenu(); }
         else if (a === 'help') { this.closeDialog(); this.openHelp(true); }
         else if (a === 'menu') this.confirmMainMenu();
         return true;
@@ -1469,7 +1471,7 @@
     <section><h4>🌐 Çevrimiçi</h4><p>Giriş ekranında <b>Oda Kur</b> ile 5 harfli bir kod al, arkadaşların kodla katılsın. Harita oyuncu sayısına göre oluşur.
       Oyun odayı kuran cihazda çalışır; o sekme açık kalmalı.</p></section>
     <section><h4>⌨ Kısayollar</h4><p>WASD / oklar: kamera · tekerlek: yakınlaştır · 1–4: menüler · Boşluk: başkente dön · Q / sağ tık: iptal ·
-      Esc: oyun menüsü · P: duraklat · M: ses</p></section></div>`;
+      Esc: oyun menüsü · P: duraklat · M: ses · G: görünüm (uydu / eski harita)</p></section></div>`;
 
   G.UI = UI;
 })();

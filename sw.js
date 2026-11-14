@@ -1,9 +1,9 @@
 // Servis çalışanı: oyunu çevrimdışı çalıştırır. Dosyaları değiştirince VERSION'ı arttır.
-const VERSION = 'clgs-v22'; // js/net.js içindeki BUILD ile aynı olmalı (çevrimiçi sürüm kontrolü)
+const VERSION = 'clgs-v23'; // js/net.js içindeki BUILD ile aynı olmalı (çevrimiçi sürüm kontrolü)
 const FONTS = 'clgs-fonts'; // yazı tipi önbelleği sürüm değişince silinmez (çevrimdışı yazı tipleri kalsın)
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/style.css',
-  './js/util.js', './js/mapgen.js', './js/game.js', './js/bot.js', './js/render.js', './js/audio.js', './js/ui.js', './js/net.js', './js/main.js',
+  './js/util.js', './js/mapgen.js', './js/game.js', './js/bot.js', './js/terrain.js', './js/render.js', './js/audio.js', './js/ui.js', './js/net.js', './js/main.js',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png', './icons/favicon-32.png',
 ];
 

@@ -1015,7 +1015,7 @@
       const city = this.cities[cityId];
       if (!city) return 'Şehir seç';
       if (this.countries.some((k) => k.capital === cityId && k.alive)) return 'Başkentlere çıkarma yapılamaz';
-      if (this.isBorderCity(cityId)) return 'Sadece sınırda olmayan (iç) şehirlere çıkarma yapılabilir';
+      // sınır şehirlerine de inilebilir (cepheye hızlı takviye ya da düşman sınırına çıkarma)
       if (city.airDef) return 'Bu şehirde hava koruma var';
       if (!this.friendly(cid, city.owner) && !this.hostile(cid, city.owner)) return 'Bu ülkeyle savaşta değilsin';
       return null;

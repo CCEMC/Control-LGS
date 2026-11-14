@@ -21,7 +21,12 @@
       this.tokenHits = [];
       this.frame = 0;
       this.version = -1;
+      // görünüm: 'arazi' (uydu görünümlü yer şekilleri) ya da 'eski' (parşömen harita); cihazda hatırlanır
+      this.view = 'arazi';
+      try { const v = localStorage.getItem('clgs_view'); if (v === 'eski' || v === 'arazi') this.view = v; } catch (e) { /* yok */ }
+      this.terrain = null;
       this.buildStatic();
+      if (this.view === 'arazi') this.startTerrain();
       this.resize();
       const cap = game.cities[game.player.capital];
       this.cam.x = cap.x; this.cam.y = cap.y; this.cam.zoom = 0.62;
@@ -72,14 +77,51 @@
       this.baseLayer = mk();
       this.landLayer = mk();
       this.mapLayer = mk();
+      this.drawBase();
+      this.mapLayer.getContext('2d').drawImage(this.baseLayer, 0, 0);
+    }
+
+    // ---- görünüm: uydu (arazi) / eski harita ----
+    isTerrain() { return this.view === 'arazi' && !!this.terrain; }
+    startTerrain() {
+      if (this.terrain || this._terrainJob || !G.Terrain) return;
+      this._terrainJob = G.Terrain.build(this.game.map, (t) => {
+        this.terrain = t; this._terrainJob = null;
+        if (this.view === 'arazi') { this.drawBase(); this.version = -1; }
+      });
+    }
+    setView(v) {
+      if (v !== 'arazi' && v !== 'eski') return;
+      this.view = v;
+      try { localStorage.setItem('clgs_view', v); } catch (e) { /* yok */ }
+      if (v === 'arazi' && !this.terrain) this.startTerrain();
+      this.drawBase();
+      this.version = -1; // kara katmanı, sınırlar ve minimap yeniden çizilsin
+      this._vgW = -1;
+    }
+    // deniz + kıyı katmanı: arazi görünümünde uydu dokusu, eski görünümde parşömen deniz ve süslemeler
+    drawBase() {
+      const map = this.game.map, S = this.layerScale;
       const b = this.baseLayer.getContext('2d');
-      b.scale(S, S);
+      b.setTransform(1, 0, 0, 1, 0, 0);
+      b.clearRect(0, 0, this.baseLayer.width, this.baseLayer.height);
+      b.setTransform(S, 0, 0, S, 0, 0);
+      if (this.isTerrain()) {
+        b.imageSmoothingEnabled = true;
+        try { b.imageSmoothingQuality = 'high'; } catch (e) { /* yok */ }
+        b.drawImage(this.terrain.canvas, 0, 0, map.W, map.H);
+        // yakın planda doku: bitki örtüsü / kaya pürüzü (orta gri = değişiklik yok, 'overlay' ile)
+        if (!this._detailPat) this._detailPat = b.createPattern(this.makeDetailTile(), 'repeat');
+        b.globalCompositeOperation = 'overlay'; b.globalAlpha = 0.55;
+        b.fillStyle = this._detailPat; b.fillRect(0, 0, map.W, map.H);
+        b.globalCompositeOperation = 'source-over'; b.globalAlpha = 1;
+        return;
+      }
       b.fillStyle = this.seaPattern; b.fillRect(0, 0, map.W, map.H);
       b.lineJoin = 'round'; b.lineCap = 'round';
       for (const [w, a] of [[62, 0.06], [40, 0.08], [22, 0.11]]) { b.strokeStyle = `rgba(45,70,70,${a})`; b.lineWidth = w; b.stroke(this.coast); }
       b.setLineDash([2, 10]); b.strokeStyle = 'rgba(45,70,70,0.35)'; b.lineWidth = 1.6; b.stroke(this.coast); b.setLineDash([]);
       this.drawDecor(b);
-      this.mapLayer.getContext('2d').drawImage(this.baseLayer, 0, 0);
     }
 
     renderLandLayer() {
@@ -88,6 +130,7 @@
       c.setTransform(1, 0, 0, 1, 0, 0);
       c.clearRect(0, 0, this.landLayer.width, this.landLayer.height);
       c.setTransform(S, 0, 0, S, 0, 0);
+      if (this.isTerrain()) { this.renderTerrainLand(c); this.composeMap(); return; }
       for (const city of g.cities) {
         c.fillStyle = this.fillFor(city);
         c.fill(this.cityPaths[city.id]);
@@ -107,7 +150,42 @@
       // iç şehir sınırlarını arazi katmanına bas (her karede binlerce çizgi tekrarını önler)
       c.lineJoin = 'round'; c.lineCap = 'round';
       c.strokeStyle = 'rgba(58,40,20,0.42)'; c.lineWidth = 1.8; c.stroke(this.inner);
-      // tek blit için deniz+kıyı ve kara katmanlarını önceden birleştir
+      this.composeMap();
+    }
+
+    // Arazi görünümünde kara katmanı: nehirler + yarı saydam ülke renkleri (yer şekilleri altından görünür)
+    renderTerrainLand(c) {
+      const g = this.game, t = this.terrain;
+      c.lineJoin = 'round'; c.lineCap = 'round';
+      // nehirler: kaynaktan denize doğru kalınlaşır
+      for (const r of t.rivers) {
+        const n = r.length, parts = 3;
+        for (let p = 0; p < parts; p++) {
+          const a = Math.floor((p * (n - 1)) / parts), b = Math.floor(((p + 1) * (n - 1)) / parts);
+          if (b <= a) continue;
+          c.beginPath();
+          c.moveTo(r[a][0], r[a][1]);
+          for (let k = a + 1; k < b; k++) {
+            const mx = (r[k][0] + r[k + 1][0]) / 2, my = (r[k][1] + r[k + 1][1]) / 2;
+            c.quadraticCurveTo(r[k][0], r[k][1], mx, my);
+          }
+          c.lineTo(r[b][0], r[b][1]);
+          c.strokeStyle = 'rgba(28,62,92,0.45)'; c.lineWidth = 3.4 + p * 2.4; c.stroke();
+          c.strokeStyle = 'rgba(70,130,175,0.95)'; c.lineWidth = 1.8 + p * 1.7; c.stroke();
+        }
+      }
+      // ülke renkleri: araziyi örtmeyen yarı saydam boya
+      c.globalAlpha = 0.27;
+      for (const city of g.cities) { c.fillStyle = this.fillFor(city); c.fill(this.cityPaths[city.id]); }
+      c.globalAlpha = 0.55;
+      for (const city of g.cities) if (g.isRebel(city.owner)) { c.fillStyle = this.hatch; c.fill(this.cityPaths[city.id]); }
+      c.globalAlpha = 1;
+      // şehir sınırları: ince, açık çizgi
+      c.strokeStyle = 'rgba(255,250,232,0.2)'; c.lineWidth = 1.5; c.stroke(this.inner);
+    }
+
+    // tek blit için deniz+kıyı ve kara katmanlarını önceden birleştir
+    composeMap() {
       const mc = this.mapLayer.getContext('2d');
       mc.setTransform(1, 0, 0, 1, 0, 0);
       mc.clearRect(0, 0, this.mapLayer.width, this.mapLayer.height);
@@ -148,6 +226,25 @@
         gr.addColorStop(0, 'rgba(150,110,60,0.13)'); gr.addColorStop(1, 'rgba(150,110,60,0)');
         x.fillStyle = gr; x.fillRect(0, 0, 256, 256);
       }
+      return c;
+    }
+    // ince arazi dokusu (gri tonlu, çok ölçekli gürültü + benekler): uydu fotoğrafındaki bitki/kaya pürüzü
+    makeDetailTile() {
+      const N = 256, c = document.createElement('canvas'); c.width = c.height = N;
+      const x = c.getContext('2d'), img = x.createImageData(N, N), d = img.data;
+      const nz = U.makeNoise(913), r = U.mulberry32(41);
+      for (let j = 0; j < N; j++) {
+        for (let i = 0; i < N; i++) {
+          // döşemenin kenarları birleşsin diye periyodik koordinat (çember üzerinde örnekleme yerine yumuşak karışım)
+          const a = nz.fbm(i / 9, j / 9, 3), b2 = nz.fbm((i + N) / 9, j / 9, 3), c2 = nz.fbm(i / 9, (j + N) / 9, 3), e = nz.fbm((i + N) / 9, (j + N) / 9, 3);
+          const u = i / N, v = j / N;
+          const n = (a * (1 - u) + b2 * u) * (1 - v) + (c2 * (1 - u) + e * u) * v;
+          const val = 128 + (n - 0.5) * 70 + (r() - 0.5) * 22;
+          const o = (j * N + i) * 4;
+          d[o] = d[o + 1] = d[o + 2] = Math.max(0, Math.min(255, val)); d[o + 3] = 255;
+        }
+      }
+      x.putImageData(img, 0, 0);
       return c;
     }
     makeHatchTile() {
@@ -331,7 +428,8 @@
       const ox = this.vw / 2 - cam.x * z, oy = this.vh / 2 - cam.y * z;
       const [vx0, vy0] = this.toWorld(0, 0), [vx1, vy1] = this.toWorld(this.vw, this.vh);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.fillStyle = '#a9b8aa'; ctx.fillRect(0, 0, this.vw, this.vh);
+      const terr = this.isTerrain();
+      ctx.fillStyle = terr ? '#16395f' : '#a9b8aa'; ctx.fillRect(0, 0, this.vw, this.vh);
       ctx.setTransform(dpr * z, 0, 0, dpr * z, dpr * ox, dpr * oy);
       ctx.imageSmoothingEnabled = true;
       // görünen bölgeyi önbellek katmanlarından kopyala
@@ -367,15 +465,19 @@
         bc.lineJoin = z < 0.85 ? 'bevel' : 'round';
         bc.lineCap = 'round';
         const pad = 16 / z, lo = z < 0.78;
-        bc.strokeStyle = 'rgba(40,24,10,0.92)'; bc.lineWidth = (2.2 + 1.6 * z) / z;
+        bc.strokeStyle = terr ? 'rgba(12,10,8,0.72)' : 'rgba(40,24,10,0.92)'; bc.lineWidth = (terr ? 3.2 + 1.8 * z : 2.2 + 1.6 * z) / z;
         this._strokeChunks(bc, this._borderChunks, vx0 - pad, vy0 - pad, vx1 + pad, vy1 + pad, lo);
+        if (terr) { // uydu görünümünde siyasi sınır: koyu kenarlı açık çizgi
+          bc.strokeStyle = 'rgba(255,240,200,0.92)'; bc.lineWidth = (1.1 + 0.7 * z) / z;
+          this._strokeChunks(bc, this._borderChunks, vx0 - pad, vy0 - pad, vx1 + pad, vy1 + pad, lo);
+        }
         if (this._hasWar) {
           bc.strokeStyle = 'rgba(40,12,8,0.9)'; bc.lineWidth = (4.4 + 1.6 * z) / z;
           this._strokeChunks(bc, this._warChunks, vx0 - pad, vy0 - pad, vx1 + pad, vy1 + pad, lo);
           bc.strokeStyle = 'rgba(206,34,22,0.95)'; bc.lineWidth = (2.6 + 1.2 * z) / z;
           this._strokeChunks(bc, this._warChunks, vx0 - pad, vy0 - pad, vx1 + pad, vy1 + pad, lo);
         }
-        bc.strokeStyle = INK; bc.lineWidth = (2 + 1.2 * z) / z;
+        bc.strokeStyle = terr ? 'rgba(18,28,24,0.42)' : INK; bc.lineWidth = (terr ? 1 + 0.6 * z : 2 + 1.2 * z) / z;
         this._strokeChunks(bc, this._coastChunks, vx0 - pad, vy0 - pad, vx1 + pad, vy1 + pad, lo);
         this._brdX = cam.x; this._brdY = cam.y; this._brdZ = z;
         this._brdVw = this.vw; this._brdVh = this.vh; this._brdDpr = dpr; this._brdVer = this.version;
@@ -397,14 +499,15 @@
       this.drawFx(ctx, now);
       this.drawCommandHint(ctx);
 
-      if (!this._vgCanvas || this._vgW !== this.vw || this._vgH !== this.vh) {
-        this._vgW = this.vw; this._vgH = this.vh;
+      if (!this._vgCanvas || this._vgW !== this.vw || this._vgH !== this.vh || this._vgT !== terr) {
+        this._vgW = this.vw; this._vgH = this.vh; this._vgT = terr;
         const c = this._vgCanvas || (this._vgCanvas = document.createElement('canvas'));
         const vw = Math.max(1, Math.ceil(this.vw * 0.25)), vh = Math.max(1, Math.ceil(this.vh * 0.25));
         c.width = vw; c.height = vh;
         const vc = c.getContext('2d');
         const vg = vc.createRadialGradient(vw / 2, vh / 2, Math.min(vw, vh) * 0.45, vw / 2, vh / 2, Math.max(vw, vh) * 0.75);
-        vg.addColorStop(0, 'rgba(70,45,15,0)'); vg.addColorStop(1, 'rgba(70,45,15,0.32)');
+        const vcol = terr ? '0,8,18' : '70,45,15';
+        vg.addColorStop(0, `rgba(${vcol},0)`); vg.addColorStop(1, `rgba(${vcol},${terr ? 0.3 : 0.32})`);
         vc.fillStyle = vg; vc.fillRect(0, 0, vw, vh);
       }
       ctx.drawImage(this._vgCanvas, 0, 0, this.vw, this.vh);
@@ -685,8 +788,9 @@
       const alpha = z > 1.1 ? Math.max(0, 0.5 - (z - 1.1)) : 0.5;
       if (alpha <= 0.02) return;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.globalAlpha = alpha;
-      ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(240,228,196,0.7)';
+      const terr = this.isTerrain();
+      ctx.globalAlpha = terr ? Math.min(1, alpha * 1.5) : alpha;
+      ctx.lineWidth = terr ? 5 : 4; ctx.strokeStyle = terr ? 'rgba(10,10,8,0.6)' : 'rgba(240,228,196,0.7)';
       let lastLs = '';
       for (let i = 0; i < this.labels.length; i++) {
         const L = this.labels[i];
@@ -698,7 +802,7 @@
         if (ls !== lastLs) { lastLs = ls; try { ctx.letterSpacing = ls; } catch (e) { /* eski tarayıcı */ } }
         const up = L.upper || (L.upper = L.c.name.toLocaleUpperCase('tr'));
         ctx.strokeText(up, sx, sy);
-        ctx.fillStyle = L.c.dark; ctx.fillText(up, sx, sy);
+        ctx.fillStyle = terr ? L.c.light : L.c.dark; ctx.fillText(up, sx, sy);
       }
       ctx.globalAlpha = 1;
       if (lastLs) try { ctx.letterSpacing = '0px'; } catch (e) { /* */ }
@@ -759,8 +863,9 @@
         if (showNames) {
           if (curFont !== nameFont) { ctx.font = curFont = nameFont; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; }
           const ny = sy - (isCap ? 41 : 22) * s;
-          ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(240,228,196,0.85)'; ctx.strokeText(city.name, sx, ny);
-          ctx.fillStyle = INK; ctx.fillText(city.name, sx, ny);
+          const terr = this.isTerrain();
+          ctx.lineWidth = 3; ctx.strokeStyle = terr ? 'rgba(10,10,8,0.7)' : 'rgba(240,228,196,0.85)'; ctx.strokeText(city.name, sx, ny);
+          ctx.fillStyle = terr ? '#fbf3dc' : INK; ctx.fillText(city.name, sx, ny);
         }
       }
     }
@@ -1265,7 +1370,7 @@
         mc.width = W; mc.height = H;
         const mctx = mc.getContext('2d');
         mctx.setTransform(1, 0, 0, 1, 0, 0);
-        mctx.fillStyle = '#aebdaf'; mctx.fillRect(0, 0, W, H);
+        mctx.fillStyle = this.isTerrain() ? '#16395f' : '#aebdaf'; mctx.fillRect(0, 0, W, H);
         mctx.drawImage(this.mapLayer, ox, oy, m.W * sc, m.H * sc);
         mctx.setTransform(sc, 0, 0, sc, ox, oy);
         mctx.lineJoin = 'round';

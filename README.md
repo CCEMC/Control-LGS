@@ -60,6 +60,11 @@ bir sonraki açılışta yeni sürümü alır.
 - Uygulama arka plandayken oyun duraklar
 - **Ses ve müzik** (dosyasız, tamamı tarayıcıda üretilir): barışta sakin müzik, savaşta taiko davullu savaş müziği, çatışmada daha yoğun hali;
   kılıç sesleri, savaş boruları, fanfar, füze/patlama, para ve arayüz sesleri. Üst çubuktaki 🔊 düğmesi (ya da **M**) sesi açar/kapatır.
+- **Uydu görünümü (yer şekilleri):** harita, haritanın tohumundan üretilen uydu fotoğrafı görünümlü arazinin üstünde çizilir:
+  kıyıdan içeri yükselen arazi, sırtlı dağ sıraları ve karlı zirveler, nem haritasına göre orman / çayır / bozkır / çöl, kumsallar,
+  kuzeybatıdan ışıklı kabartma gölgesi, sığdan derine renk değiştiren deniz ve dağlardan denize akan nehirler. Ülke renkleri yarı
+  saydamdır, sınırlar açık renkli çizgilerle görünür. Yalnızca görseldir (savaş kurallarını değiştirmez). Oyun menüsünden ya da
+  **G** tuşuyla eski parşömen haritaya geçilebilir; seçim cihazda hatırlanır. Arazi oyun açılırken ~0,5 sn'de, dilimler hâlinde üretilir.
 - **Harita tipleri** (giriş ekranında küçük önizlemeleriyle seçilir; çevrimiçide oda sahibi seçer):
   **Kıta** (klasik, körfezli ve yarımadalı), **Pangea** (yuvarlak dev kıta), **Takımadalar** (dar kara köprüleriyle bağlı adalar,
   yaklaşık ülke başına bir ada), **İç Deniz** (ortadaki denizi çevreleyen halka), **İkiz Kıtalar** (tek köprüyle bağlı iki kıta) ve **Rastgele**.
@@ -107,6 +112,8 @@ fiyatı seviye başına artar (6 → 9 → 12₺, Komünizm'de %10 ucuz). Etkile
 - Haritada saldırı **OpenFront gibi** izlenir: savaştaki ülkelerin ortak sınırı kırmızıya döner, saldırı yolundaki sınır kırmızı yanıp söner,
   çatışma sürerken saldıranın rengi sınırdan şehrin içine doğru yavaş yavaş yayılır (şehir üstünde %ilerleme yazar).
 - Saldıran birlik, çatışma bitene kadar komuta edilemez. **Saldırı altındaki şehirdeki askerler şehri terk edemez**, savunmak zorundadır (takviye gönderilebilir).
+- **Uçak çıkarması:** başkentten en fazla 15k asker, iç şehirlere **ve sınır şehirlerine** indirilebilir (kendi şehrine takviye
+  ya da savaştığın ülkeye çıkarma). Başkentlere ve hava korumalı şehirlere inilemez.
 - **Çıkış şehri saldırıya uğrarsa:** bir birlik komşu şehre saldırırken çıktığı şehre saldırı başlarsa birlik ikiye bölünür;
   yarısı cephede kalır, yarısı ~1 sn'de geri dönüp şehri savunur (haritada altın bir ok ve kalkan görünür). Bu kural botlar için de geçerlidir.
 - **Ordular:** bir ordunun bulunduğu (ya da oradan saldırıya çıktığı) şehre gönderdiğin ordusuz askerler o orduya katılır.
@@ -139,6 +146,7 @@ fiyatı seviye başına artar (6 → 9 → 12₺, Komünizm'de %10 ucuz). Etkile
 - `js/net.js` — çevrimiçi oyun: oda kur / katıl (PeerJS), komutların host'a iletilmesi, durum eşitleme
 - `js/game.js` — oyun kuralları, kayıt/yükleme. DOM kullanmaz; tüm eylemler `cmd*` komutlarıyla gelir
 - `js/bot.js` — bot yapay zekâsı (oyuncuyla aynı komutları kullanır)
+- `js/terrain.js` — uydu görünümlü arazi üretimi (yükseklik, dağlar, bitki örtüsü, deniz derinliği, nehirler; yalnızca görsel)
 - `js/render.js` — harita, birlikler, efektler, minimap
 - `js/ui.js` — menüler, diyaloglar, gelen iletiler
 - `js/main.js` — giriş ekranı, oyun döngüsü, girişler, uygulama (PWA) özellikleri

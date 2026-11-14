@@ -433,6 +433,7 @@
       if (!$('endScreen').classList.contains('hidden')) return; // oyun sonu ekranı açıkken menü kısayolları çalışmaz
       if (e.code === 'KeyQ') ui.cancel();
       if (e.code === 'KeyM') $('sndBtn').click();
+      if (e.code === 'KeyG') { renderer.setView(renderer.view === 'eski' ? 'arazi' : 'eski'); ui.toast(renderer.view === 'eski' ? 'Görünüm: eski harita' : 'Görünüm: uydu (yer şekilleri)', 'info'); }
       if (e.code === 'Escape') { if (ui.dialogOpen()) ui.closeDialog(); else if (!ui.cancel()) ui.openGameMenu(); }
       if (e.code === 'KeyP' && !game.mp) { if (ui.dialogOpen() && ui.paused) ui.closeDialog(); else if (!ui.dialogOpen()) ui.openGameMenu(); }
       if (e.code === 'Digit1') ui.openMenu('diplomacy');
