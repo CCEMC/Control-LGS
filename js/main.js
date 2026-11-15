@@ -218,6 +218,7 @@
   async function hostRoom() {
     if (session || onlineBusy) return;
     onlineBusy = true; lobbyRole = 'host'; lockStart(true); onlineMsg('Oda kuruluyor…');
+    keepAwake();
     saveName();
     try {
       session = await G.Net.host(meInfo(), { onLobby: renderLobby }, { mapType: startState.mapType });
@@ -231,6 +232,7 @@
     saveName();
     try {
       const s = await G.Net.join(code, meInfo(), {
+        onStatus: (m) => { if (!session && onlineBusy) onlineMsg(m); },
         onLobby: renderLobby,
         onStart: (g, sess) => { session = sess; launch(g, { mode: startState.mode, net: sess }); },
         onLost: (msg) => { if (!game) resetOnline(msg); },

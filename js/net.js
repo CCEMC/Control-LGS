@@ -5,17 +5,33 @@
 (function () {
   'use strict';
   const G = window.G;
-  const BUILD = 'clgs-v39'; // host ve istemci aynı sürümü çalıştırmalı (harita aynı tohumdan aynı üretilsin)
+  const BUILD = 'clgs-v40'; // host ve istemci aynı sürümü çalıştırmalı (harita aynı tohumdan aynı üretilsin)
   const PROTO = 1;
   const PREFIX = 'control-lgs-';
   const ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const MAX_PLAYERS = 9;
   const SNAP_MS = 200;
   const SETUP_LIMIT_MS = 60000; // fabrika yeri seçmeyen oyuncu için başkente otomatik kurulum
+  const JOIN_TIMEOUT_MS = 25000;
   const PEER_SRC = [
     'https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js',
     'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js',
+    'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js',
   ];
+  // PeerJS varsayılanındaki eu-0/us-0.turn.peerjs.com alan adları çözülemediği için ICE sürecini geciktiriyor;
+  // yalnız canlı STUN sunucuları kullan.
+  const PEER_CFG = {
+    debug: 0,
+    config: {
+      iceCandidatePoolSize: 4,
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun.cloudflare.com:3478' },
+      ],
+    },
+  };
 
   let peerLoad = null;
   function loadPeer() {
@@ -26,9 +42,12 @@
       const next = () => {
         if (i >= PEER_SRC.length) { peerLoad = null; reject(new Error('Bağlantı kütüphanesi yüklenemedi. İnternet bağlantını kontrol et.')); return; }
         const s = document.createElement('script');
+        let settled = false;
+        const fail = () => { if (settled) return; settled = true; clearTimeout(t); s.remove(); next(); };
+        const t = setTimeout(fail, 7000);
         s.src = PEER_SRC[i++]; s.async = true; s.crossOrigin = 'anonymous';
-        s.onload = () => (window.Peer ? resolve() : next());
-        s.onerror = () => { s.remove(); next(); };
+        s.onload = () => { if (settled) return; settled = true; clearTimeout(t); if (window.Peer) resolve(); else next(); };
+        s.onerror = fail;
         document.head.appendChild(s);
       };
       next();
@@ -71,17 +90,22 @@
       for (let attempt = 0; attempt < 4; attempt++) {
         const code = makeCode();
         try { await this.tryOpen(code); this.code = code; this.lobbyChanged(); return this; } catch (e) {
-          if (!e || e.type !== 'unavailable-id') throw new Error(peerErrText(e));
+          if (e && e.type === 'unavailable-id') continue;
+          throw new Error(e && e.timeoutMsg ? e.timeoutMsg : peerErrText(e));
         }
       }
       throw new Error('Oda kodu alınamadı, tekrar dene.');
     }
     tryOpen(code) {
       return new Promise((resolve, reject) => {
-        const peer = new window.Peer(PREFIX + code, { debug: 0 });
-        const fail = (e) => { try { peer.destroy(); } catch (x) { /* yok */ } reject(e); };
+        const peer = new window.Peer(PREFIX + code, PEER_CFG);
+        let opened = false;
+        const fail = (e) => { if (opened) return; opened = true; clearTimeout(to); try { peer.destroy(); } catch (x) { /* yok */ } reject(e); };
+        const to = setTimeout(() => fail({ timeoutMsg: 'Bağlantı sunucusuna ulaşılamadı (zaman aşımı). İnternet bağlantını kontrol et.' }), 12000);
         peer.once('error', fail);
         peer.once('open', () => {
+          if (opened) return;
+          opened = true; clearTimeout(to);
           peer.off('error', fail);
           this.peer = peer;
           peer.on('connection', (conn) => this.onConn(conn));
@@ -92,11 +116,28 @@
       });
     }
     onConn(conn) {
+      conn.on('open', () => this.flushOutbox(conn));
       conn.on('data', (msg) => { try { this.onData(conn, msg); } catch (e) { console.warn(e); } });
       conn.on('close', () => this.onClose(conn));
       conn.on('error', () => this.onClose(conn));
     }
-    send(p, msg) { if (p.conn && p.connected) { try { p.conn.send(msg); } catch (e) { /* bağlantı kapanıyor */ } } }
+    flushOutbox(conn) {
+      const p = this.playerOf(conn);
+      if (!p || !p.connected || !p.outbox || !p.outbox.length) return;
+      const q = p.outbox; p.outbox = [];
+      for (const m of q) { try { conn.send(m); } catch (e) { /* bağlantı kapanıyor */ } }
+    }
+    send(p, msg) {
+      if (!p.conn || !p.connected) return;
+      if (!p.conn.open) {
+        p.outbox = p.outbox || [];
+        // veri kanalı açılana kadar bekle; aynı türdeki eski anlık durumları biriktirme
+        if (msg.t === 'snap' || msg.t === 'lobby') p.outbox = p.outbox.filter((x) => x.t !== msg.t);
+        if (p.outbox.length < 30) p.outbox.push(msg);
+        return;
+      }
+      try { p.conn.send(msg); } catch (e) { /* bağlantı kapanıyor */ }
+    }
     playerOf(conn) { return this.players.find((p) => p.conn === conn); }
     onData(conn, msg) {
       if (!msg || typeof msg !== 'object') return;
@@ -110,19 +151,20 @@
         if (this.started) {
           // oyun sürerken: bağlantısı kopmuş bir oyuncu (lobide aldığı anahtarla) geri dönebilir
           // yeniden bağlanma lobide verilen gizli anahtarla olur (aynı adı yazan başkası ülkeyi devralamaz)
+          if (p) { this.send(p, this.startMsg(p)); return; }
           const back = msg.token ? this.players.find((x) => !x.host && !x.connected && x.token === msg.token) : null;
           if (!back) { conn.send({ t: 'reject', msg: 'Bu odada oyun başladı. Yeni oyuncu katılamaz.' }); return; }
-          back.conn = conn; back.connected = true; back.lastSeen = performance.now(); back.queue = [];
+          back.conn = conn; back.connected = true; back.lastSeen = performance.now(); back.queue = []; back.outbox = [];
           const c = this.game.countries[back.cid];
           if (c.alive) { c.isBot = false; this.game.say(null, `🔌 ${c.name} oyuna geri döndü.`, 'info'); }
-          conn.send(this.startMsg(back));
+          this.send(back, this.startMsg(back));
           return;
         }
-        if (p) return;
+        if (p) { this.send(p, { t: 'lobby', ...this.lobbyState(), you: p.name, token: p.token }); return; }
         if (this.players.length >= MAX_PLAYERS) { conn.send({ t: 'reject', msg: `Oda dolu (en fazla ${MAX_PLAYERS} oyuncu).` }); return; }
         let nm = name, k = 2;
         while (this.players.some((x) => x.name === nm)) nm = `${name.slice(0, 19)} ${k++}`;
-        p = { key: conn.peer, name: nm, ideology: G.IDEO[msg.ideology] ? msg.ideology : 'demokrasi', host: false, conn, connected: true, cid: null, queue: [], lastSeen: performance.now(),
+        p = { key: conn.peer, name: nm, ideology: G.IDEO[msg.ideology] ? msg.ideology : 'demokrasi', host: false, conn, connected: true, cid: null, queue: [], outbox: [], lastSeen: performance.now(),
           token: Array.from({ length: 16 }, () => ALPHA[Math.floor(Math.random() * ALPHA.length)]).join('') };
         this.players.push(p);
         this.lobbyChanged();
@@ -212,7 +254,7 @@
       const d = g.snapshot();
       for (const p of this.players) {
         if (p.host || !p.connected) continue;
-        if (now - (p.lastSeen || now) > 15000) { try { p.conn.close(); } catch (e) { /* yok */ } this.onClose(p.conn); continue; }
+        if (now - (p.lastSeen || now) > 20000) { try { p.conn.close(); } catch (e) { /* yok */ } this.onClose(p.conn); continue; }
         const ev = p.queue; p.queue = [];
         this.send(p, { t: 'snap', d, ev });
       }
@@ -244,34 +286,102 @@
       code = cleanCode(code);
       if (code.length !== 5) throw new Error('Oda kodu 5 karakter olmalı.');
       this.code = code;
+      const status = (m) => { if (this.cb.onStatus) this.cb.onStatus(m); };
+      status('Bağlantı kütüphanesi yükleniyor…');
       await loadPeer();
+      status('Bağlantı sunucusuna bağlanılıyor…');
       await new Promise((resolve, reject) => {
-        const peer = new window.Peer({ debug: 0 });
+        const peer = new window.Peer(PEER_CFG);
         this.peer = peer;
-        let done = false;
-        const fail = (msg) => { if (done) return; done = true; clearTimeout(to); try { peer.destroy(); } catch (e) { /* yok */ } reject(new Error(msg)); };
-        const to = setTimeout(() => fail('Odaya bağlanılamadı (zaman aşımı). Kodu ve internet bağlantını kontrol et.'), 15000);
-        peer.on('error', (e) => { if (!done) fail(peerErrText(e)); else console.warn('peer', e && e.type); });
-        peer.once('open', () => {
+        let done = false, peerOpen = false, chanOpen = false, attempt = 0;
+        let activeConn = null, retryTo = null, helloTimer = null;
+        const clearConnTimers = () => { clearTimeout(retryTo); retryTo = null; clearInterval(helloTimer); helloTimer = null; };
+        const fail = (msg) => {
+          if (done) return;
+          done = true; clearTimeout(to); clearConnTimers();
+          try { peer.destroy(); } catch (e) { /* yok */ }
+          reject(new Error(msg));
+        };
+        const succeed = () => {
+          if (done) return;
+          done = true; clearTimeout(to); clearConnTimers();
+          resolve();
+        };
+        const to = setTimeout(() => {
+          const msg = !peerOpen
+            ? 'Bağlantı sunucusuna ulaşılamadı (zaman aşımı). İnternet bağlantını kontrol et.'
+            : chanOpen
+              ? 'Oda sahibinden yanıt alınamadı (zaman aşımı). Oda sahibinin sekmesi açık kalmalı ve aynı sürümde olmalısınız.'
+              : 'Odaya bağlanılamadı (zaman aşımı — ağlar arası doğrudan eş bağlantısı kurulamadı). Kodu kontrol et; farklı ağlarda veya mobil veride sorun varsa aynı Wi-Fi ağında deneyin.';
+          fail(msg);
+        }, JOIN_TIMEOUT_MS);
+
+        const connectOnce = () => {
+          if (done || !peerOpen) return;
+          clearConnTimers();
+          attempt++;
+          chanOpen = false;
+          status(attempt === 1 ? `${code} odası aranıyor…` : `${code} odasına yeniden bağlanılıyor…`);
           const conn = peer.connect(PREFIX + code, { reliable: true, serialization: 'json' });
+          activeConn = conn;
           this.conn = conn;
-          conn.on('open', () => {
+          const retryOrFail = (msg) => {
+            if (done || conn !== activeConn) return;
+            clearConnTimers();
+            if (!chanOpen && attempt < 2 && peerOpen && !peer.destroyed) {
+              try { conn.close(); } catch (e) { /* yok */ }
+              setTimeout(connectOnce, 350);
+              return;
+            }
+            fail(msg);
+          };
+          retryTo = setTimeout(() => { if (!chanOpen) retryOrFail('Eş bağlantısı zaman aşımına uğradı.'); }, 10500);
+          if (conn.peerConnection) {
+            conn.peerConnection.addEventListener('iceconnectionstatechange', () => {
+              if (done || conn !== activeConn) return;
+              const st = conn.peerConnection && conn.peerConnection.iceConnectionState;
+              if (st === 'checking') status(`${code} ile eşler arası bağlantı kuruluyor…`);
+              else if (st === 'failed' && !chanOpen) retryOrFail('Ağlar arası eş bağlantısı kurulamadı.');
+            });
+          }
+          const sendHello = () => {
+            if (done || conn !== activeConn || !conn.open) return;
             let token = null;
             try { token = localStorage.getItem('clgs_tok_' + code); } catch (e) { /* yok */ }
-            conn.send({ t: 'hello', name: this.me.name, ideology: this.me.ideology, build: BUILD, proto: PROTO, token });
+            try { conn.send({ t: 'hello', name: this.me.name, ideology: this.me.ideology, build: BUILD, proto: PROTO, token }); } catch (e) { /* yok */ }
+          };
+          conn.on('open', () => {
+            if (done || conn !== activeConn) return;
+            chanOpen = true;
+            clearTimeout(retryTo); retryTo = null;
+            status('Oda onayı bekleniyor…');
+            sendHello();
+            helloTimer = setInterval(sendHello, 1800);
           });
           conn.on('data', (msg) => {
-            if (!done && msg && (msg.t === 'lobby' || msg.t === 'start')) { done = true; clearTimeout(to); resolve(); }
+            if (conn !== activeConn) return;
+            if (!done && msg && (msg.t === 'lobby' || msg.t === 'start')) succeed();
             if (!done && msg && msg.t === 'reject') { fail(msg.msg); return; }
             try { this.onData(msg); } catch (e) { console.warn(e); }
           });
-          conn.on('close', () => { if (!done) fail('Oda bağlantıyı kapattı.'); else this.lost('Oda sahibiyle bağlantı koptu.'); });
-          conn.on('error', () => { if (!done) fail('Odaya bağlanılamadı.'); });
+          conn.on('close', () => { if (!done) retryOrFail('Oda bağlantıyı kapattı.'); else if (conn === activeConn) this.lost('Oda sahibiyle bağlantı koptu.'); });
+          conn.on('error', () => { if (!done) retryOrFail('Odaya bağlanılamadı.'); });
+        };
+
+        peer.on('error', (e) => {
+          if (done) { console.warn('peer', e && e.type); return; }
+          if (e && e.type === 'peer-unavailable') { fail(peerErrText(e)); return; }
+          if (!peerOpen || attempt >= 2) fail(peerErrText(e));
+        });
+        peer.once('open', () => {
+          if (done) return;
+          peerOpen = true;
+          connectOnce();
         });
       });
       this.ping = setInterval(() => {
         this.send({ t: 'ping' });
-        if (this.started && performance.now() - this.lastMsg > 12000) this.lost('Oda sahibinden 12 saniyedir haber yok; bağlantı koptu.');
+        if (this.started && performance.now() - this.lastMsg > 18000) this.lost('Oda sahibinden 18 saniyedir haber yok; bağlantı koptu.');
       }, 2000);
       return this;
     }
