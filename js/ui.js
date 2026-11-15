@@ -254,6 +254,7 @@
     selectUnit(u) {
       if (u && u.city !== null && this.game.isUnderAttack(u.city)) this.toast(`${this.game.cities[u.city].name} saldırı altında — askerler şehri terk edemez, savunmak zorunda.`, 'bad');
       this.selUnit = u ? u.id : null;
+      this.pendingAtk = null; // mobil saldırı önizlemesi seçim değişince kapanır
       this.amountK = u ? Math.ceil(u.troops / 1000) : 0;
       this.barKey = '';
       if (this.$('actionBar')) this.updateActionBar();
@@ -270,6 +271,32 @@
       if (this.selUnit !== null) { this.selectUnit(null); this.updateActionBar(); return true; }
       if (this.menu) { this.openMenu(null); return true; }
       return false;
+    }
+
+    // Saldırı tahmini (ipucu kutusu ve mobil önizleme aynı hesabı kullanır): gönderilecek miktar, çarpanlar,
+    // oyundaki savunma hesabı (effDefense: ittifak, zayıflık, arazi, şehir savunması dahil), oran ve etiket.
+    attackOdds(sel, cityId) {
+      const g = this.game, c = g.cities[cityId];
+      const send = Math.min(sel.troops, this.amountK * 1000);
+      const atkM = g.battleAtk(sel, sel.city, c), hM = g.heightAtk(sel.city, cityId);
+      const defs = g.defendersOf(cityId, sel.owner);
+      const defT = defs.reduce((s, u) => s + u.troops, 0), effD = g.effDefense(c, defs), effA = send * atkM;
+      const ratio = effD > 0 ? effA / effD : Infinity;
+      const tag = !defT ? 'boş şehir' : ratio >= 1.25 ? 'avantajlı' : ratio >= 0.85 ? 'denk' : 'riskli';
+      const cls = !defT || ratio >= 1.25 ? 'good' : ratio >= 0.85 ? 'even' : 'bad';
+      // oyun, savunmayı geçemeyecek kadar küçük bir saldırıyı başlatmaz (cmdMove)
+      const blocked = defs.length > 0 && effA <= effD && send <= G.CFG.minAttackRemain;
+      return { c, send, atkM, hM, defT, defM: defT ? effD / defT : g.defMult(c.owner, c), effA, effD, ratio, tag, cls, blocked, ter: g.terrainOf(cityId) };
+    }
+    // seçili birliği (seçilen miktarla) hedef şehre gönder: kendi/müttefik şehri = taşı, düşman komşu = saldır
+    moveSelected(cityId) {
+      const g = this.game, sel = this.selectedUnit();
+      this.pendingAtk = null;
+      if (!sel) return;
+      const amount = Math.min(sel.troops, this.amountK * 1000);
+      const r = g.cmdMove(g.playerId, sel.id, cityId, amount >= sel.troops - 1 ? undefined : amount);
+      if (r.err) { this.toast(r.err, 'bad'); this.updateBarLive(); return; }
+      this.selectUnit(null);
     }
 
     handleClick(cityId, unit) {
@@ -318,10 +345,15 @@
         if (unit && unit.owner === me && unit.id !== sel.id && !unit.move) { this.selectUnit(unit); return; }
         if (cityId === null) { this.selectUnit(null); this.updateActionBar(); return; } // boş yere (denize) dokununca seçim kalkar
         if (cityId === sel.city) { this.selectUnit(null); return; }
-        const amount = Math.min(sel.troops, this.amountK * 1000);
-        const r = g.cmdMove(me, sel.id, cityId, amount >= sel.troops - 1 ? undefined : amount);
-        if (r.err) { this.toast(r.err, 'bad'); return; }
-        this.selectUnit(null);
+        // Dokunmatikte saldırı iki adımlı: ilk dokunuş hedefin saldırı tahminini eylem çubuğunda gösterir,
+        // aynı şehre ikinci dokunuş (ya da "Saldır" düğmesi) saldırır. Yanlışlıkla dokunup asker harcanmasın.
+        const tc = g.cities[cityId];
+        if (this.mode === 'mobile' && g.hostile(me, tc.owner) && g.cities[sel.city].neighbors.includes(cityId) && this.pendingAtk !== cityId) {
+          this.pendingAtk = cityId;
+          this.updateBarLive();
+          return;
+        }
+        this.moveSelected(cityId);
         return;
       }
       if (unit && unit.owner === me && !unit.move) { this.selectUnit(unit); return; }
@@ -379,7 +411,8 @@
               <button class="btn sm" data-bar="pct" data-pct="0.75">%75</button>
               <button class="btn sm" data-bar="pct" data-pct="1">Tümü</button>
             </span>${cancelBtn}</div>${armyRow}
-            <small>Hedef şehre ${this.mode === 'pc' ? 'tıkla' : 'dokun'}: kendi şehrin = taşı · komşu düşman = saldır · ⬇ yüksekten +%10, ⬆ yokuş yukarı −%10</small>`;
+            <div class="bar-row atk-prev hidden" id="atkPrev" aria-live="polite"></div>
+            <small>${this.mode === 'pc' ? 'Hedef şehre tıkla: kendi şehrin = taşı · komşu düşman = saldır' : 'Kendi şehrine dokun = taşı · düşman komşuya dokun = saldırı tahmini, tekrar dokun = saldır'} · ⬇ yüksekten +%10, ⬆ yokuş yukarı −%10</small>`;
           this._pctBtns = [...bar.querySelectorAll('[data-pct]')];
         } else { bar.innerHTML = ''; this._pctBtns = null; }
       }
@@ -405,6 +438,7 @@
           const target = pct >= 1 ? maxK : Math.max(1, Math.min(maxK, Math.round(maxK * pct)));
           q[i].classList.toggle('on', this.amountK === target);
         }
+        this.updateAtkPreview(sel);
       } else if (this.barKey.startsWith('target') && this.targeting && this.targeting.info) {
         this._txt('pickInfo', this.targeting.info());
       } else if (this.barKey.startsWith('mark:')) {
@@ -423,10 +457,34 @@
       this.updateBarLive();
       return true;
     }
+    // Mobil saldırı önizlemesi: hedef, arazi, güçler, oran (avantajlı/denk/riskli) ve Saldır düğmesi.
+    // Miktar kaydırıcısı ya da şehirdeki askerler değiştikçe canlı güncellenir.
+    updateAtkPreview(sel) {
+      const ap = this.$('atkPrev');
+      if (!ap) return;
+      const g = this.game, pid = this.pendingAtk;
+      const ok = pid !== null && pid !== undefined && sel && g.cities[pid] && g.hostile(sel.owner, g.cities[pid].owner) && g.cities[sel.city].neighbors.includes(pid);
+      if (!ok) {
+        if (pid !== null && pid !== undefined) this.pendingAtk = null;
+        if (!ap.classList.contains('hidden')) { ap.classList.add('hidden'); ap.innerHTML = ''; ap._h = ''; }
+        return;
+      }
+      const od = this.attackOdds(sel, pid);
+      const h = od.hM > 1 ? '<span class="ap-h ok">⬇ +%10</span>' : od.hM < 1 ? '<span class="ap-h bad">⬆ −%10</span>' : '';
+      const pow = od.defT ? `${fmtK(od.send)} ×${od.atkM.toFixed(2)} <i>vs</i> ${fmtK(od.defT)} ×${od.defM.toFixed(2)}` : `${fmtK(od.send)} asker`;
+      const html = `<span class="ap-t">⚔ <b>${esc(od.c.name)}</b> <small>${od.ter.icon} ${od.ter.name}</small></span>
+        <span class="ap-o">${pow}</span><span class="ap-tag ${od.cls}">${od.tag}</span>${h}
+        ${od.blocked ? '<span class="ap-w">Savunma bu küçük kuvveti geçer</span>' : ''}
+        <span class="ap-b"><button class="btn sm red" data-bar="atkgo" ${od.blocked ? 'disabled' : ''}>Saldır</button><button class="btn sm" data-bar="atkno" aria-label="Saldırıdan vazgeç">✕</button></span>`;
+      if (ap._h !== html) { ap.innerHTML = html; ap._h = html; }
+      if (ap.classList.contains('hidden')) ap.classList.remove('hidden');
+    }
     onBarClick(e) {
       const b = e.target.closest('[data-bar]');
       if (!b) return;
       const g = this.game;
+      if (b.dataset.bar === 'atkgo') { if (this.pendingAtk !== null && this.pendingAtk !== undefined) this.moveSelected(this.pendingAtk); return; }
+      if (b.dataset.bar === 'atkno') { this.pendingAtk = null; this.updateBarLive(); return; }
       if (b.dataset.bar === 'cancel') this.cancel();
       else if (b.dataset.bar === 'pickdone' && this.targeting) {
         const t = this.targeting;
@@ -584,17 +642,10 @@
       if (sel && cityId !== sel.city) {
         if (g.friendly(sel.owner, c.owner)) actHint = '<div class="tt-hint ok">✓ Tıkla: destek / taşı</div>';
         else if (g.hostile(sel.owner, c.owner) && g.cities[sel.city].neighbors.includes(cityId)) {
-          const send = Math.min(sel.troops, this.amountK * 1000);
-          const atkM = g.battleAtk(sel, sel.city, c);
-          const hM = g.heightAtk(sel.city, cityId);
-          const hTxt = hM > 1 ? '<div class="tt-hint ok">⬇ Yüksekten saldırı: +%10</div>' : hM < 1 ? '<div class="tt-hint">⬆ Yokuş yukarı saldırı: −%10</div>' : '';
-          const defT = units.reduce((sum, u) => sum + (g.friendly(u.owner, c.owner) ? u.troops : 0), 0);
-          if (defT <= 0) actHint = '<div class="tt-hint ok">⚔ Tıkla: saldır (boş şehir)</div>' + hTxt;
-          else {
-            const ratio = (send * atkM) / (defT * defM);
-            const tag = ratio >= 1.25 ? 'avantajlı' : ratio >= 0.85 ? 'denk' : 'riskli';
-            actHint = `<div class="tt-hint atk">⚔ Tıkla: saldır (${fmtK(send)} ×${atkM.toFixed(2)} vs ${fmtK(defT)} ×${defM.toFixed(2)} · ${tag})</div>` + hTxt;
-          }
+          const od = this.attackOdds(sel, cityId);
+          const hTxt = od.hM > 1 ? '<div class="tt-hint ok">⬇ Yüksekten saldırı: +%10</div>' : od.hM < 1 ? '<div class="tt-hint">⬆ Yokuş yukarı saldırı: −%10</div>' : '';
+          if (od.defT <= 0) actHint = '<div class="tt-hint ok">⚔ Tıkla: saldır (boş şehir)</div>' + hTxt;
+          else actHint = `<div class="tt-hint atk">⚔ Tıkla: saldır (${fmtK(od.send)} ×${od.atkM.toFixed(2)} vs ${fmtK(od.defT)} ×${od.defM.toFixed(2)} · ${od.tag})</div>` + hTxt;
         }
         else if (!g.hostile(sel.owner, c.owner) && !o.isRebel) actHint = '<div class="tt-hint">⚠ Saldırı için önce savaş ilan et</div>';
         else actHint = '<div class="tt-hint">✗ Sınır komşusu değil</div>';
