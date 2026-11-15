@@ -54,6 +54,11 @@ bir sonraki açılışta yeni sürümü alır.
 
 ## Uygulama özellikleri
 
+- **Arayüz (v4):** koyu ve sade "komuta masası" tasarımı: düz yarı saydam yüzeyler, tek vurgu rengi (altın), ince kenarlar,
+  okunaklı Inter yazı tipi; başlıklarda oyunun karakteri için IM Fell English SC. Renkler `css/style.css` başındaki
+  değişkenlerden (`--surface`, `--fill`, `--line`, `--ink`, `--gold` …) gelir.
+- **Onaylar:** savaş ilanı, füze ve isyan gibi geri alınamaz eylemler onay penceresi açar. Üçten fazla gelen teklif
+  "+N teklif daha" düğmesiyle Diplomasi'de açılır; orada gelen teklifler Kabul / Reddet düğmeleriyle yanıtlanabilir.
 - Ana ekran ikonu, tam ekran açılış, yatay ve dikey düzen, çentikli ekran desteği
 - **Otomatik kayıt:** her 10 sn'de ve uygulama arka plana geçince kaydeder; giriş ekranında **Kaldığın Yerden Devam Et**
 - Oyun açıkken ekran kararmaz; saldırı/savaş bildirimlerinde titreşim

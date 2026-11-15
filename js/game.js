@@ -64,7 +64,7 @@
     ],
     fasizm: [
       { key: 'propaganda', name: 'Propaganda', desc: 'Savaş yorgunluğu %15 daha yavaş artar' },
-      { key: 'mobil', name: 'Seferberlik', desc: 'Savaş başlayınca başkentte +5k asker toplanır' },
+      { key: 'mobil', name: 'Seferberlik', desc: 'Savaş başlayınca başkentte +5k asker toplanır (3 dk\'da bir)' },
       { key: 'storm', name: 'Yıldırım Doktrini', desc: 'Blitzkrieg %25 daha uzun sürer' },
     ],
   };
@@ -716,10 +716,13 @@
       this.dropProposals((p) => ((p.from === a && p.to === b) || (p.from === b && p.to === a)) && p.type !== 'peace');
       const A = this.countries[a].name, B = this.countries[b].name;
       this.say(null, joined ? `⚔ ${A}, müttefikinin çağrısıyla ${B} ile savaşa girdi!` : `⚔ ${A}, ${B} ülkesine SAVAŞ İLAN ETTİ!`, 'war');
-      // Faşizm: Seferberlik — savaş başlayınca başkentte seviye başına 5k asker toplanır
+      // Faşizm: Seferberlik — savaş başlayınca başkentte seviye başına 5k asker toplanır.
+      // En fazla 3 dakikada bir: savaş ilan et → barış yap → tekrarla döngüsüyle bedava asker toplanamasın.
       for (const k of [a, b]) {
         const c = this.countries[k], lv = this.iu(k, 'mobil');
         if (!lv || !c.alive || c.isRebel || c.capital < 0) continue;
+        if (c.mobilAt !== undefined && this.time - c.mobilAt < 180) continue;
+        c.mobilAt = this.time;
         this.addTroops(k, c.capital, 5000 * lv);
         this.say(k, `📯 Seferberlik: ${this.cities[c.capital].name} başkentinde ${U.fmtK(5000 * lv)} asker toplandı.`, 'good');
       }
@@ -843,6 +846,19 @@
       const war = this.atWar(cid, to);
       if (type === 'demand' || type === 'support' || type === 'trade') {
         if (war) return { err: 'Savaş sırasında bu eylem yapılamaz' };
+        // çevrimiçide değiştirilmiş bir istemci metin/NaN gönderebilir: miktarlar sayıya, şehirler tamsayı listesine çevrilir
+        const clean = (b) => {
+          if (!b || typeof b !== 'object') return b;
+          const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : NaN; };
+          b.money = b.money === undefined ? 0 : num(b.money);
+          b.troops = b.troops === undefined ? 0 : num(b.troops);
+          b.cities = Array.isArray(b.cities) ? [...new Set(b.cities.map(Number).filter(Number.isInteger))] : [];
+          return b;
+        };
+        if (type === 'trade') { payload.give = clean(payload.give); payload.take = clean(payload.take); } else clean(payload);
+        for (const b of type === 'trade' ? [payload.give, payload.take] : [payload]) {
+          if (b && (Number.isNaN(b.money) || Number.isNaN(b.troops))) return { err: 'Geçersiz miktar' };
+        }
         const give = type === 'support' ? payload : type === 'trade' ? payload.give : null;
         const take = type === 'demand' ? payload : type === 'trade' ? payload.take : null;
         if (this.bundleEmpty(give) && this.bundleEmpty(take)) return { err: 'Bir şey seçmelisin' };
@@ -1191,7 +1207,9 @@
       if (this.friendly(u.owner, city.owner)) { this.placeUnit(u, cityId); return; }
       if (!this.hostile(u.owner, city.owner)) { u.move.from = fromId; this.retreat(u); return; }
       const defenders = this.defendersOf(cityId, u.owner);
-      const aM = this.battleAtk(u, fromId, city);
+      // uçakla inen birlik yükseklik avantajı/dezavantajı almaz (çıkış şehri başkent olsa ve hedefe komşu olsa bile)
+      const para = !!(u.move && (u.move.kind === 'para' || u.move.para));
+      const aM = this.battleAtk(u, para ? null : fromId, city);
       const effA = u.troops * aM, effD = this.effDefense(city, defenders);
       if (defenders.length && effA <= effD && u.troops <= CFG.minAttackRemain) {
         this.say([u.owner, city.owner], `${this.countries[u.owner].name} ordusu ${city.name} önünde püskürtüldü.`, 'info');
@@ -1205,7 +1223,7 @@
       // Yer şekli işgal süresini de değiştirir: dağda %30, tepede ve ormanda %15 uzun, çölde %10 kısa.
       const dur = U.clamp((effD + CFG.occupyBase) / Math.max(effA * CFG.occupyRate, 1) / cav, CFG.occupyMin, CFG.occupyMax) * this.terrainOf(cityId).occ;
       // prog: şehrin ne kadarının ele geçirildiği (0..1) — haritada sınırdan içeri doğru yavaş yavaş ilerler
-      u.move = { kind: 'battle', from: fromId, to: cityId, path: [fromId, cityId], t0: this.time, t1: this.time + dur, effD0: Math.max(effD, 1), prog: 0 };
+      u.move = { kind: 'battle', from: fromId, to: cityId, path: [fromId, cityId], t0: this.time, t1: this.time + dur, effD0: Math.max(effD, 1), prog: 0, para };
       this.emit({ type: 'sound', name: 'battleStart', cid: u.owner, target: city.owner, city: cityId });
       // bu şehirden başka bir şehre saldıran birlik varsa yarısı savunmaya döner
       this.recallHalf(cityId, u);
@@ -1217,6 +1235,7 @@
       const prev = city.owner;
       u.move = null; u.city = city.id;
       const wasCapital = prev !== CFG.REBEL && this.countries[prev].capital === city.id;
+      let perkTxt = ''; // ideoloji bonusları şehir alma mesajına eklenir (oyuncu nereden geldiğini görsün)
       if (prev !== u.owner) {
         if (this.stats) { this.stats[u.owner].captured++; this.stats[prev].lost++; }
         // şehir kaybetmek halkı yorar, zafer moral verir
@@ -1225,9 +1244,10 @@
         if (!kw.isRebel) kw.weary = Math.max(0, (kw.weary || 0) - CFG.wearyCityWon);
         this.capture(city, u.owner);
         if (u.owner !== CFG.REBEL) {
-          u.troops += 1000 * this.iu(u.owner, 'militia'); // Komünizm: Halk Milisi
+          const mil = this.iu(u.owner, 'militia'); // Komünizm: Halk Milisi
+          if (mil) { u.troops += 1000 * mil; perkTxt += ` · Halk Milisi +${mil}k asker`; }
           const tr = this.iu(u.owner, 'tribute'); // Monarşi: Haraç
-          if (tr) { const k = this.countries[u.owner]; k.money = Math.round((k.money + tr) * 100) / 100; }
+          if (tr) { const k = this.countries[u.owner]; k.money = Math.round((k.money + tr) * 100) / 100; perkTxt += ` · Haraç +${tr}₺`; }
         }
       }
       this.mergeCity(city.id);
@@ -1236,7 +1256,7 @@
       const pn = this.countries[prev].name;
       if (!wasCapital) {
         const txt = `🏴 ${this.countries[u.owner].name}, ${pn} ülkesinden ${city.name} şehrini ele geçirdi!`;
-        this.say(u.owner, txt, 'good'); this.say(prev, txt, 'bad');
+        this.say(u.owner, txt + perkTxt, 'good'); this.say(prev, txt, 'bad');
       }
     }
 
@@ -1493,7 +1513,7 @@
       if (this.friendly(u.owner, city.owner)) { this.placeUnit(u, city.id); return; }
       if (!this.hostile(u.owner, city.owner)) { this.retreat(u); return; }
       const defenders = this.defendersOf(city.id, u.owner);
-      const aM = this.battleAtk(u, m.from, city);
+      const aM = this.battleAtk(u, m.para ? null : m.from, city);
       const effD = this.effDefense(city, defenders);
       const effA = u.troops * aM;
       // savunan kalmadıysa kuşatma süresi dolunca şehir düşer

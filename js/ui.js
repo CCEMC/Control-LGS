@@ -118,11 +118,13 @@
           }
           return;
         }
+        if (e.target.closest('[data-more]')) { this.openMenu('diplomacy'); return; }
         const b = e.target.closest('button[data-pid]');
         if (!b) return;
         const r = g.cmdRespond(g.playerId, +b.dataset.pid, b.dataset.ok === '1');
         if (r.err) this.toast(r.err, 'bad');
         this.renderInbox();
+        if (this.menu === 'diplomacy') { this.lastHtml = ''; this.renderPanel(); }
       });
       const spdBox = this.$('spdBox');
       if (spdBox) {
@@ -238,7 +240,7 @@
           <div class="lt"><i data-exp="${p.id}"></i></div>
           <div class="lb"><button class="btn ok" data-pid="${p.id}" data-ok="1">Kabul Et</button><button class="btn no" data-pid="${p.id}" data-ok="0">Reddet</button></div>
         </div>`;
-      }).join('') + (this.inbox.length > 3 ? `<div class="more">+${this.inbox.length - 3} ileti daha</div>` : '');
+      }).join('') + (this.inbox.length > 3 ? `<button type="button" class="more" data-more="1">+${this.inbox.length - 3} teklif daha · Diplomasi'de yanıtla</button>` : '');
     }
 
     // ---------- seçimler ----------
@@ -752,7 +754,7 @@
         if (al) tags.push(`<span class="tag al">⚑ ${esc(al.name)}</span>`);
         if (g.mp && t.isHuman) tags.push(`<span class="tag">👤 Oyuncu${t.isBot ? ' (bağlantı yok)' : ''}</span>`);
         if (t.alive && nbrs.has(id)) tags.push('<span class="tag">Sınır komşusu</span>');
-        const head = `<div class="dp-head" style="background:linear-gradient(100deg, ${this.soft(t, 0.34)}, rgba(255,250,235,.2) 75%)">
+        const head = `<div class="dp-head" style="background:linear-gradient(100deg, ${this.soft(t, 0.34)}, rgba(var(--fill),.2) 75%)">
           ${this.seal(t, 'big')}<div class="dp-title"><b>${esc(t.name)}</b><div class="tags">${tags.join('')}</div></div>
           ${t.alive && t.capital >= 0 ? `<button class="btn sm" data-act="dfocus" data-id="${id}" title="Başkentini haritada göster">◎ Harita</button>` : ''}</div>`;
         let body;
@@ -783,8 +785,9 @@
           // bekleyen teklifler
           const pend = g.proposals.filter((p) => (p.from === me && p.to === id) || (p.from === id && p.to === me));
           const pendHtml = pend.length ? `<ul class="pend">${pend.map((p) => `<li class="${p.from === me ? 'out' : 'in'}" data-pid="${p.id}">
-            <span>${p.from === me ? '📤 Gönderdin' : '📥 Gelen'}: <b>${esc(G.PROPOSAL_NAMES[p.type])}</b></span>
-            <small>${this.L(() => Math.max(0, Math.ceil(p.expires - g.time)) + ' sn')}</small></li>`).join('')}</ul>` : '';
+            <span>${p.from === me ? '📤 Gönderdin' : '📥 Gelen'}: <b>${esc(G.PROPOSAL_NAMES[p.type])}</b>${p.from !== me ? ` <small>— ${esc(g.describeProposal(p))}</small>` : ''}</span>
+            <small>${this.L(() => Math.max(0, Math.ceil(p.expires - g.time)) + ' sn')}</small>
+            ${p.from !== me ? `<span class="pend-b"><button class="btn sm ok" data-act="presp" data-pid="${p.id}" data-ok="1">Kabul</button><button class="btn sm no" data-act="presp" data-pid="${p.id}" data-ok="0">Reddet</button></span>` : ''}</li>`).join('')}</ul>` : '';
           // eylemler
           const deals = `<div class="dcard"><h5>Anlaşmalar</h5><div class="actions">
               ${B('demand', '📜 Talep', { dis: war, title: 'Karşı taraftan asker, şehir veya para iste' })}
@@ -1029,6 +1032,12 @@
       const res = (r, okMsg) => { if (r && r.err) this.toast(r.err, 'bad'); else if (okMsg) this.toast(okMsg, 'good'); this.lastHtml = ''; this.renderPanel(); };
       switch (b.dataset.act) {
         case 'dsel': this.diploSel = id; this.lastHtml = ''; this.renderPanel(); break;
+        case 'presp': { // diplomasi panelinden gelen teklifi yanıtla
+          const r = g.cmdRespond(me, +b.dataset.pid, b.dataset.ok === '1');
+          if (r && r.err) this.toast(r.err, 'bad');
+          this.renderInbox(); this.lastHtml = ''; this.renderPanel();
+          break;
+        }
         case 'dopen': this.diploSel = id; this.openMenu('diplomacy'); break;
         case 'dfocus': {
           const c = g.countries[id];
@@ -1043,7 +1052,14 @@
         }
         case 'demand': case 'support': case 'trade': this.openBundleDialog(b.dataset.act, id); break;
         case 'warright': res(g.cmdBuyWarRight(me, id), `Savaş ilan hakkı alındı: 20 sn sonra ${g.countries[id].name} ülkesine savaş ilan edebilirsin.`); break;
-        case 'declare': res(g.cmdDeclareWar(me, id)); break;
+        case 'declare': {
+          const t = g.countries[id];
+          this.confirm(`⚔ ${esc(t.name)} ülkesine savaş ilan et`,
+            `<p>Savaş ilanı <b>geri alınamaz</b>: bütün dünya duyar ve ${esc(t.name)} ile ilişkin bozulur.
+             ${t.allianceId !== null ? 'Müttefikleri de savaşa çağrılabilir. ' : ''}Savaş sürdükçe halkın yorulur; gelir ve asker üretimi düşer.</p>`,
+            '⚔ Savaş İlan Et', () => res(g.cmdDeclareWar(me, id)));
+          break;
+        }
         case 'peace': res(g.cmdPropose(me, id, 'peace'), 'Barış teklifi gönderildi.'); break;
         case 'callallies': res(g.cmdCallAllies(me, id), 'Müttefiklerine savaş çağrısı gönderildi.'); break;
         case 'surrender': this.surrenderDialog(id); break;
@@ -1163,7 +1179,10 @@
           break;
         case 'missile':
           startTarget('Füze hedefi seç (başkent hariç, savaştığın ülke/isyancı)', (cid) => g.missileTargetError(me, cid),
-            (cid) => done(g.cmdBuy(me, 'missile', { city: cid }), `Füze ${g.cities[cid].name} şehrine fırlatıldı!`));
+            (cid) => this.confirm(`🚀 Füze → ${esc(g.cities[cid].name)}`,
+              `<p>Şehirdeki <b>tüm askerler ve yapılar</b> yok olur. Hava koruma varsa füze %15 ihtimalle düşürülür.</p>
+               <p>Bedel: <b>${fmtMoney(pr)}</b> · geri alınamaz.</p>`, 'Fırlat',
+              () => done(g.cmdBuy(me, 'missile', { city: cid }), `Füze ${g.cities[cid].name} şehrine fırlatıldı!`)));
           break;
         case 'plane':
           startTarget('Uçak çıkarması için şehir seç (iç ya da sınır şehri, başkent değil)',(cid) => g.planeTargetError(me, cid),
@@ -1172,7 +1191,11 @@
         case 'rebellion': {
           const sel = document.getElementById('rebelSel');
           if (!sel || sel.value === '') { this.toast('Ülke seç', 'bad'); return; }
-          done(g.cmdBuy(me, 'rebellion', { country: +sel.value }), 'İsyan ajanları görevde!');
+          const target = +sel.value;
+          this.confirm(`🔥 İsyan Çıkar → ${esc(g.countries[target].name)}`,
+            `<p>${esc(g.countries[target].name)} ülkesinde askeri olan rastgele bir şehirde isyan çıkar; şehir isyancılara geçer.</p>
+             <p>Bedel: <b>${fmtMoney(pr)}</b> · geri alınamaz.</p>`, 'İsyan Çıkar',
+            () => done(g.cmdBuy(me, 'rebellion', { country: target }), 'İsyan ajanları görevde!'));
           break;
         }
       }
@@ -1344,6 +1367,10 @@
         this.closeDialog();
       };
     }
+    // geri alınamaz eylemler için onay penceresi
+    confirm(title, body, okLabel, onOk) {
+      this.dialog(title, body, [{ label: okLabel, cls: 'red', fn: () => { onOk(); return true; } }, { label: 'Vazgeç' }]);
+    }
     closeDialog() {
       const l = this.$('dialog'); l.classList.add('hidden'); l.oninput = null; l.innerHTML = ''; document.body.classList.remove('dialog-open');
       this.paused = false; // oyun menüsü / yardım kapanınca (tek oyunculuda) oyun devam eder
@@ -1369,7 +1396,7 @@
           <button class="btn" data-gm="view">${this.renderer && this.renderer.view === 'eski' ? '🗺 Görünüm: Eski harita — uyduya geç' : '🛰 Görünüm: Uydu (yer şekilleri) — eski haritaya geç'}</button>
           <button class="btn" data-gm="help">📖 Nasıl Oynanır</button>
           <button class="btn red" data-gm="menu">🏠 Ana Menüye Dön</button>
-          ${this.mode !== 'mobile' ? '<p class="gm-keys"><b>Kısayollar:</b> WASD kamera · 1–4 menüler · Boşluk başkent · Q iptal · P duraklat · M ses · G görünüm</p>' : ''}
+          ${this.mode !== 'mobile' ? '<p class="gm-keys"><b>Kısayollar:</b> WASD kamera · 1–4 menüler · Boşluk başkent · Q iptal · P duraklat · . hız · M ses · G görünüm · Z/X/C/V birlik %25/50/75/100</p>' : ''}
           <p class="gm-info">${esc(g.player.name)} · ${esc(((G.MapGen.TYPES.find((t) => t.key === g.mapType)) || { name: 'Kıta' }).name)} haritası · ${fmtTime(g.time)} · Control-LGS ${G.VERSION_LABEL}</p></div>`;
       this.dialog(sp ? '⏸ Duraklatıldı' : '☰ Oyun Menüsü', body, [], false, (e) => {
         const b = e.target.closest('[data-gm]');
@@ -1510,7 +1537,8 @@
     <section><h4>🌐 Çevrimiçi</h4><p>Giriş ekranında <b>Oda Kur</b> ile 5 harfli bir kod al, arkadaşların kodla katılsın. Harita oyuncu sayısına göre oluşur.
       Oyun odayı kuran cihazda çalışır; o sekme açık kalmalı.</p></section>
     <section><h4>⌨ Kısayollar</h4><p>WASD / oklar: kamera · tekerlek: yakınlaştır · 1–4: menüler · Boşluk: başkente dön · Q / sağ tık: iptal ·
-      Esc: oyun menüsü · P: duraklat · M: ses · G: görünüm (uydu / eski harita)</p></section></div>`;
+      Esc: oyun menüsü · P: duraklat · . (nokta): oyun hızı · M: ses · G: görünüm (uydu / eski harita) ·
+      Z / X / C / V: seçili birliğin %25 / %50 / %75 / %100'ü</p></section></div>`;
 
   G.UI = UI;
 })();
