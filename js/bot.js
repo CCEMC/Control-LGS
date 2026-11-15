@@ -86,10 +86,12 @@
       const t = game.citiesOf(cid).filter((x) => x.factories > 0 && !x.airDef && !game.isBorderCity(x.id))[0];
       if (t) game.cmdBuy(cid, 'airDef', { city: t.id });
     }
-    // asker üretimi ücretsizdir; cephe/tehdit durumuna göre üretim sırasını dolu tut
+    // asker üretimi: 1k asker = 1₺. Barışta önce fabrikaya biriktir (ekonomi büyüsün); savaşta/tehditte paranın çoğu askere gider.
     const threatened = game.neighborsOfCountry(cid).some((n) => game.countries[n] && game.countries[n].warRights && game.countries[n].warRights[cid] !== undefined);
-    const targetQ = atWar || threatened ? 12 : 5;
-    while (c.queue < targetQ) if (game.cmdQueueTroops(cid, 1).err) break;
+    const saving = !atWar && facs < want && game.citiesOf(cid).some((x) => game.factorySlots(x) < game.factoryLimit(cid));
+    const reserve = atWar || threatened ? 1 : saving ? fp + 2 : 4;
+    const spend = Math.floor(((c.money - reserve) * (atWar || threatened ? 0.9 : 0.55)) / Math.max(0.01, game.price(cid, 'troop')));
+    for (let i = 0; i < spend; i++) if (game.cmdQueueTroops(cid, 1).err) break;
   }
 
   function military(game, cid) {

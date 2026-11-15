@@ -149,7 +149,8 @@ Saldırıya dayalı, uzun savaşları kaldırabilen ama savunmada kırılgan bir
 - **Çıkış şehri saldırıya uğrarsa:** bir birlik komşu şehre saldırırken çıktığı şehre saldırı başlarsa birlik ikiye bölünür;
   yarısı cephede kalır, yarısı ~1 sn'de geri dönüp şehri savunur (haritada altın bir ok ve kalkan görünür). Bu kural botlar için de geçerlidir.
 - **Ordular:** bir ordunun bulunduğu (ya da oradan saldırıya çıktığı) şehre gönderdiğin ordusuz askerler o orduya katılır.
-- **Asker üretimi:** Askeri Yönetim'deki halka, sırada bekleyen asker sayısını gösterir (+3k gibi). Hemen altındaki
+- **Asker üretimi:** 1k asker = 1₺ (Komünizm'de %10 ucuz), sıraya eklerken ödenir; sıradan çıkarılan askerin parası iade edilir.
+  Sıra en fazla 100k olabilir. Askeri Yönetim'deki halka, sırada bekleyen asker sayısını gösterir (+3k gibi). Hemen altındaki
   **Sınırlara dağıt** anahtarı açıkken yeni askerler başkentte kalmaz, sınıra yürür: önce saldırı altındaki şehirler, sonra
   savaştığın ülkeye/isyancılara sınır olan şehirler, sonra diğer sınır şehirleri; aynı öncelikte en az askeri olan (yoldakiler dahil) seçilir.
   Başkent saldırı altındaysa askerler başkentte kalır.

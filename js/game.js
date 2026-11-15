@@ -39,7 +39,7 @@
       perks: ['+%15 saldırı, −%10 savunma', 'Savaş yorgunluğu %30 yavaş artar', '80k asker ile başlar'] },
   };
 
-  const PRICES = { warRight: 5, alliance: 5, leave: 5, upgrade: 5, troop: 0, blitz: 5, cityDef: 5, factory: 12, factoryLimit: 5,
+  const PRICES = { warRight: 5, alliance: 5, leave: 5, upgrade: 5, troop: 1, blitz: 5, cityDef: 5, factory: 12, factoryLimit: 5,
     plane: 10, rebellion: 200, missile: 35, airDef: 20, ideoUp: 6 };
 
   // İdeolojiye özel geliştirmeler: her ideolojinin kendine ait 3 geliştirmesi var, her biri en fazla 3 seviye.
@@ -495,9 +495,12 @@
       const c = this.countries[cid];
       if (dir > 0) {
         if (c.queue >= CFG.maxTroopQueue) return { err: `Üretim sırası dolu (en fazla ${CFG.maxTroopQueue}k)` };
+        if (!this.pay(cid, this.price(cid, 'troop'))) return { err: 'Yetersiz para' }; // 1k asker = 1₺ (Komünizm %10 ucuz)
         c.queue++;
       } else {
         if (c.queue <= 0) return { err: 'Kuyrukta asker yok' };
+        // sıradan çıkarılan (henüz üretilmemiş) asker için ödenen para iade edilir
+        c.money = Math.round((c.money + this.price(cid, 'troop')) * 100) / 100;
         c.queue--;
         if (c.queue === 0) c.prodTimer = 0;
       }

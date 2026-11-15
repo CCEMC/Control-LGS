@@ -832,7 +832,8 @@
     // ---------- askeri yönetim (v3) ----------
     htmlMilitary() {
       const g = this.game, me = g.playerId, P = g.player;
-      const up = g.price(me, 'upgrade'), maxQ = G.CFG.maxTroopQueue;
+      const up = g.price(me, 'upgrade'), maxQ = G.CFG.maxTroopQueue, tp = g.price(me, 'troop');
+      const noQ = P.queue >= maxQ || P.money < tp; // sıra dolu ya da 1k askerlik para yok
       const armies = g.armies.filter((a) => a.owner === me);
       const cut = g.cutOffCities(me);
       const warn = cut.length ? `<div class="warnbox">${icon('warn', 'wi2')}
@@ -852,17 +853,17 @@
       // asker üretimi: halka gösterge + sıra düğmeleri + sınırlara dağıt
       const tt = g.troopTime(me);
       const prod = `<div class="mcard">
-          <div class="mc-h">${icon('factory')}<b>Asker üretimi</b><span class="mc-r">1k asker / ${+tt.toFixed(2)} sn · ücretsiz</span></div>
+          <div class="mc-h">${icon('factory')}<b>Asker üretimi</b><span class="mc-r">1k asker / ${+tt.toFixed(2)} sn · ${fmtMoney(tp)}</span></div>
           <div class="pr-body">
             <div class="ring" ${this.LV(() => (P.queue > 0 ? (P.prodTimer / g.troopTime(me)) * 100 : 0))}>
               <div class="ring-in"><b class="target">${this.LP(() => '+' + fmtK(P.queue * 1000))}</b><small>sırada</small></div></div>
             <div class="pr-ctl">
               <div class="qbtns"><button class="btn round" data-act="q" data-dir="-1" ${P.queue <= 0 ? 'disabled' : ''} title="Sıradan 1k çıkar">−</button>
-                <button class="btn green" data-act="q" data-dir="1" data-n="1" ${P.queue >= maxQ ? 'disabled' : ''}>+1k</button>
-                <button class="btn green" data-act="q" data-dir="1" data-n="5" ${P.queue >= maxQ ? 'disabled' : ''}>+5k</button>
-                <button class="btn green" data-act="q" data-dir="1" data-n="10" ${P.queue >= maxQ ? 'disabled' : ''}>+10k</button>
-                <button class="btn green" data-act="q" data-dir="1" data-n="max" ${P.queue >= maxQ ? 'disabled' : ''} title="Sırayı en fazla ${maxQ}k askere doldur">+Maks</button>
-                ${P.queue > 0 ? '<button class="btn sm" data-act="qclear" title="Tüm üretim sırasını temizle">✕</button>' : ''}</div>
+                <button class="btn green" data-act="q" data-dir="1" data-n="1" ${noQ ? 'disabled' : ''} title="1k asker · ${fmtMoney(tp)}">+1k</button>
+                <button class="btn green" data-act="q" data-dir="1" data-n="5" ${noQ ? 'disabled' : ''} title="5k asker · ${fmtMoney(tp * 5)}">+5k</button>
+                <button class="btn green" data-act="q" data-dir="1" data-n="10" ${noQ ? 'disabled' : ''} title="10k asker · ${fmtMoney(tp * 10)}">+10k</button>
+                <button class="btn green" data-act="q" data-dir="1" data-n="max" ${noQ ? 'disabled' : ''} title="Paranın yettiği kadar sıraya ekle (en fazla ${maxQ}k)">+Maks</button>
+                ${P.queue > 0 ? '<button class="btn sm" data-act="qclear" title="Tüm üretim sırasını temizle (para iade edilir)">✕</button>' : ''}</div>
               <button class="tgl ${P.autoDist ? 'on' : ''}" data-act="autodist" role="switch" aria-checked="${!!P.autoDist}"
                 title="Açıkken üretilen askerler başkentte kalmaz; önce saldırı altındaki, sonra savaştığın ülkeye sınır olan, en az askeri olan şehre yürür.">
                 <span class="tgl-track"><i></i></span><span class="tgl-l">Sınırlara dağıt</span><span class="tgl-ar">»</span></button>
@@ -1050,19 +1051,22 @@
         case 'join': res(g.cmdJoinRequest(me, id), 'Katılma başvurusu tüm üyelere gönderildi.'); break;
         case 'leave': res(g.cmdLeaveAlliance(me), 'İttifaktan ayrıldın.'); break;
         case 'q': {
-          // +1k / +5k / +10k / +Maks: sıraya ücretsiz ekler (en fazla maxTroopQueue)
-          const n = b.dataset.n === 'max' ? Math.max(1, G.CFG.maxTroopQueue - g.player.queue) : Math.max(1, +b.dataset.n || 1);
+          // +1k / +5k / +10k / +Maks: 1k asker = 1₺; parası ve sıra sınırı (maxTroopQueue) yettiği kadar ekler
+          const tp = g.price(me, 'troop');
+          const n = b.dataset.n === 'max'
+            ? Math.max(1, Math.min(G.CFG.maxTroopQueue - g.player.queue, Math.floor(g.player.money / Math.max(0.01, tp))))
+            : Math.max(1, +b.dataset.n || 1);
           const dir = +b.dataset.dir;
           let r = null, done = 0;
           for (let i = 0; i < n; i++) { r = g.cmdQueueTroops(me, dir); if (r.err) break; done++; }
-          if (done > 0 && b.dataset.n === 'max') this.toast(`+${done}k asker sıraya eklendi`, 'good');
-          else if (done > 0 && n > 1 && r && r.err) this.toast(`Sıra sınırına kadar eklendi: +${done}k`, 'info');
+          if (done > 0 && b.dataset.n === 'max') this.toast(`+${done}k asker sıraya eklendi (${fmtMoney(done * tp)})`, 'good');
+          else if (done > 0 && n > 1 && r && r.err) this.toast(`${r.err === 'Yetersiz para' ? 'Paran' : 'Sıra sınırı'} yettiği kadar eklendi: +${done}k`, 'info');
           res(done > 0 ? { ok: true } : r);
           break;
         }
         case 'qclear': {
           while (g.player.queue > 0) { const r = g.cmdQueueTroops(me, -1); if (r.err) break; }
-          res({ ok: true }, 'Üretim sırası temizlendi.');
+          res({ ok: true }, 'Üretim sırası temizlendi, para iade edildi.');
           break;
         }
         case 'autodist': {
@@ -1495,7 +1499,7 @@
       şehir almak azaltır. Yorgunluk <b>gelirini ve asker üretimini en çok %50</b> düşürür, barışta yavaşça geçer. Yorgun ülkeler barışa daha yatkındır.</p></section>
     <section><h4>🤝 Diplomasi</h4><p>Talep, destek ve takas teklif et; ittifak kur ya da bir ittifaka katıl; barış teklif et ya da teslim ol.
       İlişkiler tekliflerin kabul edilme şansını etkiler. Müttefiklerini savaşa çağırabilirsin.</p></section>
-    <section><h4>🎖 Askeri yönetim ve mağaza</h4><p>Asker üret (ücretsiz · 2 sn / 1k), <b>Sınırlara dağıt</b> ile yeni askerleri cepheye yolla, saldırı/savunma geliştir,
+    <section><h4>🎖 Askeri yönetim ve mağaza</h4><p>Asker üret (+1k = 1₺ · 2 sn / 1k), <b>Sınırlara dağıt</b> ile yeni askerleri cepheye yolla, saldırı/savunma geliştir,
       ideolojine özel geliştirmeleri al, ordu kur. Mevcut orduya <b>+ Birlik</b> düğmesiyle, birlik seçiliyken alttaki ordu düğmeleriyle veya ordunun şehrine asker göndererek sonradan birlik ekleyebilirsin. Mağazada fabrika, blitzkrieg, uçak, füze, isyan ve savunmalar var.</p></section>
     <section><h4>⛰ Yer şekilleri</h4><p>Her şehrin bir arazisi var (şehrin üzerine gel ya da birlik seçince düşman komşularda rozet olarak görünür):
       <b>🏔 Dağ</b> savunma +%40 ve işgal %30 yavaş · <b>⛰ Tepe</b> savunma +%20, işgal %15 yavaş · <b>🌲 Orman</b> savunma +%15, işgal %15 yavaş ·
