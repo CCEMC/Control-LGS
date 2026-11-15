@@ -27,16 +27,18 @@
   };
   const NO_TERRAIN = { key: 'ova', name: 'Ova', icon: '🌾', def: 1, occ: 1, desc: 'Açık arazi: bonus yok' };
 
+  // Denge (clgs-v36): 4 ideoloji, her ülke yuvasında her ideolojinin oynadığı 180 botlu oyunla ayarlandı.
+  // price: tüm fiyat çarpanı · income: gelir çarpanı · troopPrice: yalnızca asker fiyatı · weary: savaş yorgunluğu artış çarpanı
   const IDEO = {
-    komunizm: { key: 'komunizm', name: 'Komünizm', troops: 90000, price: 0.9, atk: 1, def: 1, war: 1, factories: 2, rebelAtk: 1.05,
-      perks: ['%10 daha ucuz fiyatlar', 'İsyancılara karşı +%5 saldırı', '90k asker ile başlar'] },
-    demokrasi: { key: 'demokrasi', name: 'Demokrasi', troops: 75000, price: 1, atk: 1, def: 1.2, war: 0.5, factories: 2, rebelAtk: 1,
-      perks: ['+%20 savunma', 'Savaş ilan hakkı %50 daha ucuz', '75k asker ile başlar'] },
-    monarsi: { key: 'monarsi', name: 'Monarşi', troops: 85000, price: 1, atk: 1.1, def: 1, war: 1, factories: 3, rebelAtk: 1,
-      perks: ['+%10 saldırı', '3 fabrika ile başlar', '85k asker ile başlar'] },
-    // Faşizm: saldırı odaklı militarist rejim; savunması zayıf, halkı savaşa daha geç yorulur (weary: yorgunluk artış çarpanı)
-    fasizm: { key: 'fasizm', name: 'Faşizm', troops: 80000, price: 1, atk: 1.15, def: 0.9, war: 1, factories: 2, rebelAtk: 1, weary: 0.7,
-      perks: ['+%15 saldırı, −%10 savunma', 'Savaş yorgunluğu %30 yavaş artar', '80k asker ile başlar'] },
+    komunizm: { key: 'komunizm', name: 'Komünizm', troops: 85000, price: 0.93, atk: 1, def: 1, war: 1, factories: 2, rebelAtk: 1.05,
+      perks: ['%7 daha ucuz fiyatlar', 'İsyancılara karşı +%5 saldırı', '85k asker ile başlar'] },
+    demokrasi: { key: 'demokrasi', name: 'Demokrasi', troops: 80000, price: 1, atk: 1, def: 1.2, war: 0.5, factories: 2, rebelAtk: 1, income: 1.05,
+      perks: ['+%20 savunma, +%5 gelir', 'Savaş ilan hakkı %50 daha ucuz', '80k asker ile başlar'] },
+    monarsi: { key: 'monarsi', name: 'Monarşi', troops: 75000, price: 1, atk: 1.05, def: 1, war: 1, factories: 3, rebelAtk: 1,
+      perks: ['+%5 saldırı', '3 fabrika ile başlar', '75k asker ile başlar'] },
+    // Faşizm: saldırı odaklı militarist rejim; ucuz asker, halkı savaşa daha geç yorulur
+    fasizm: { key: 'fasizm', name: 'Faşizm', troops: 85000, price: 1, atk: 1.1, def: 1, war: 1, factories: 2, rebelAtk: 1, weary: 0.8, troopPrice: 0.75,
+      perks: ['+%10 saldırı, askerler %25 ucuz', 'Savaş yorgunluğu %20 yavaş artar', '85k asker ile başlar'] },
   };
 
   const PRICES = { warRight: 5, alliance: 5, leave: 5, upgrade: 5, troop: 1, blitz: 5, cityDef: 5, factory: 12, factoryLimit: 5,
@@ -194,6 +196,7 @@
       const id = this.ideo(cid);
       let p = PRICES[key] * id.price;
       if (key === 'warRight') p *= id.war;
+      if (key === 'troop') p *= id.troopPrice || 1; // Faşizm: ucuz asker
       if (key === 'rebellion') p *= 1 - 0.2 * this.iu(cid, 'agit');
       return Math.round(p * 100) / 100;
     }
@@ -205,12 +208,12 @@
     // asker üretim süresi: Komünizm'in Beş Yıllık Planı hızlandırır, savaş yorgunluğu yavaşlatır
     troopTime(cid) { return CFG.troopBuildTime / (1 + 0.25 * this.iu(cid, 'plan')) / (1 - this.wearyCut(cid)); }
     // gelir: fabrika başına 1₺ (Demokrasi: Serbest Piyasa arttırır), savaş yorgunluğu düşürür
-    incomeOf(cid) { return Math.round(this.factoriesOf(cid) * (1 + 0.2 * this.iu(cid, 'market')) * (1 - this.wearyCut(cid)) * 100) / 100; }
+    incomeOf(cid) { return Math.round(this.factoriesOf(cid) * (this.ideo(cid).income || 1) * (1 + 0.2 * this.iu(cid, 'market')) * (1 - this.wearyCut(cid)) * 100) / 100; }
 
     // ---- savaş yorgunluğu ----
     // savaş yorgunluğunun gelir ve üretime etkisi (0 … wearyMaxEffect)
     wearyCut(cid) { const c = this.countries[cid]; return c && !c.isRebel ? CFG.wearyMaxEffect * U.clamp(c.weary || 0, 0, 1) : 0; }
-    // savaş yorgunluğunun artış hızı çarpanı (Faşizm %30 yavaş; Propaganda seviye başına %15 daha yavaş)
+    // savaş yorgunluğunun artış hızı çarpanı (Faşizm %20 yavaş; Propaganda seviye başına %15 daha yavaş)
     wearyMult(cid) { return (this.ideo(cid).weary || 1) * (1 - 0.15 * this.iu(cid, 'propaganda')); }
     // blitzkrieg süresi (Faşizm: Yıldırım Doktrini seviye başına +%25)
     blitzTime(cid) { return CFG.blitzDuration * (1 + 0.25 * this.iu(cid, 'storm')); }
@@ -495,7 +498,7 @@
       const c = this.countries[cid];
       if (dir > 0) {
         if (c.queue >= CFG.maxTroopQueue) return { err: `Üretim sırası dolu (en fazla ${CFG.maxTroopQueue}k)` };
-        if (!this.pay(cid, this.price(cid, 'troop'))) return { err: 'Yetersiz para' }; // 1k asker = 1₺ (Komünizm %10 ucuz)
+        if (!this.pay(cid, this.price(cid, 'troop'))) return { err: 'Yetersiz para' }; // 1k asker = 1₺ (Komünizm %7, Faşizm %25 ucuz)
         c.queue++;
       } else {
         if (c.queue <= 0) return { err: 'Kuyrukta asker yok' };

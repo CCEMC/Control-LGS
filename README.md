@@ -110,7 +110,7 @@ bir sonraki açılışta yeni sürümü alır.
 ## İdeolojiye özel geliştirmeler
 
 Her ideolojinin sadece kendisinin alabileceği 3 geliştirmesi var (Askeri Yönetim menüsünde). Her biri en fazla 3 seviye,
-fiyatı seviye başına artar (6 → 9 → 12₺, Komünizm'de %10 ucuz). Etkiler seviye başınadır; botlar da bunları alır.
+fiyatı seviye başına artar (6 → 9 → 12₺, Komünizm'de %7 ucuz). Etkiler seviye başınadır; botlar da bunları alır.
 
 | İdeoloji | Geliştirme | Etki (seviye başına) |
 |---|---|---|
@@ -127,8 +127,20 @@ fiyatı seviye başına artar (6 → 9 → 12₺, Komünizm'de %10 ucuz). Etkile
 | Faşizm | Seferberlik | Savaş başlayınca başkentte +5k asker toplanır |
 | Faşizm | Yıldırım Doktrini | Blitzkrieg %25 daha uzun sürer |
 
-**Faşizm** (dördüncü ideoloji): +%15 saldırı ama −%10 savunma, savaş yorgunluğu %30 yavaş artar, 80k asker ve 2 fabrikayla başlar.
-Saldırıya dayalı, uzun savaşları kaldırabilen ama savunmada kırılgan bir oyun tarzı. Botlar da bu ideolojiyi seçebilir.
+**Faşizm** (dördüncü ideoloji): +%10 saldırı, askerler %25 ucuz, savaş yorgunluğu %20 yavaş artar, 85k asker ve 2 fabrikayla başlar.
+Ucuz ve kalabalık orduyla saldıran, uzun savaşları kaldırabilen bir oyun tarzı. Botlar da bu ideolojiyi seçebilir.
+
+### İdeoloji dengesi
+
+| İdeoloji | Başlangıç | Ekonomi | Savaş |
+|---|---|---|---|
+| Komünizm | 85k asker, 2 fabrika | tüm fiyatlar %7 ucuz | isyancılara +%5 saldırı |
+| Demokrasi | 80k asker, 2 fabrika | +%5 gelir, savaş hakkı %50 ucuz | +%20 savunma |
+| Monarşi | 75k asker, **3 fabrika** | — | +%5 saldırı |
+| Faşizm | 85k asker, 2 fabrika | askerler %25 ucuz | +%10 saldırı, yorgunluk %20 yavaş |
+
+Değerler, her ideolojinin her ülke yuvasında oynadığı 180 botlu oyunla (20'şer dk) ayarlandı: dördünün de topraktaki
+payı adil payın %82–115'i arasında, birinci gelme sayıları birbirine yakın (önceden Komünizm %183, Faşizm %57'deydi).
 
 ## Savaş kuralları (kısaca)
 
@@ -149,7 +161,7 @@ Saldırıya dayalı, uzun savaşları kaldırabilen ama savunmada kırılgan bir
 - **Çıkış şehri saldırıya uğrarsa:** bir birlik komşu şehre saldırırken çıktığı şehre saldırı başlarsa birlik ikiye bölünür;
   yarısı cephede kalır, yarısı ~1 sn'de geri dönüp şehri savunur (haritada altın bir ok ve kalkan görünür). Bu kural botlar için de geçerlidir.
 - **Ordular:** bir ordunun bulunduğu (ya da oradan saldırıya çıktığı) şehre gönderdiğin ordusuz askerler o orduya katılır.
-- **Asker üretimi:** 1k asker = 1₺ (Komünizm'de %10 ucuz), sıraya eklerken ödenir; sıradan çıkarılan askerin parası iade edilir.
+- **Asker üretimi:** 1k asker = 1₺ (Komünizm'de %7, Faşizm'de %25 ucuz), sıraya eklerken ödenir; sıradan çıkarılan askerin parası iade edilir.
   Sıra en fazla 100k olabilir. Askeri Yönetim'deki halka, sırada bekleyen asker sayısını gösterir (+3k gibi). Hemen altındaki
   **Sınırlara dağıt** anahtarı açıkken yeni askerler başkentte kalmaz, sınıra yürür: önce saldırı altındaki şehirler, sonra
   savaştığın ülkeye/isyancılara sınır olan şehirler, sonra diğer sınır şehirleri; aynı öncelikte en az askeri olan (yoldakiler dahil) seçilir.
