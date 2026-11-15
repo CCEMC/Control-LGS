@@ -54,9 +54,6 @@ bir sonraki açılışta yeni sürümü alır.
 
 ## Uygulama özellikleri
 
-- **Arayüz (v4):** koyu ve sade "komuta masası" tasarımı: düz yarı saydam yüzeyler, tek vurgu rengi (altın), ince kenarlar,
-  okunaklı Inter yazı tipi; başlıklarda oyunun karakteri için IM Fell English SC. Renkler `css/style.css` başındaki
-  değişkenlerden (`--surface`, `--fill`, `--line`, `--ink`, `--gold` …) gelir.
 - **Mobil saldırı tahmini:** dokunmatikte birlik seçiliyken düşman komşuya ilk dokunuş saldırmaz; eylem çubuğunda hedefin
   arazisi, iki tarafın gücü ve çarpanları, yükseklik etkisi ve **avantajlı / denk / riskli** etiketi görünür. Aynı şehre
   ikinci dokunuş ya da **Saldır** düğmesi saldırır, ✕ vazgeçer; miktar kaydırıcısı değişince tahmin canlı güncellenir.

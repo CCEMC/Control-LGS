@@ -805,7 +805,7 @@
         if (al) tags.push(`<span class="tag al">⚑ ${esc(al.name)}</span>`);
         if (g.mp && t.isHuman) tags.push(`<span class="tag">👤 Oyuncu${t.isBot ? ' (bağlantı yok)' : ''}</span>`);
         if (t.alive && nbrs.has(id)) tags.push('<span class="tag">Sınır komşusu</span>');
-        const head = `<div class="dp-head" style="background:linear-gradient(100deg, ${this.soft(t, 0.34)}, rgba(var(--fill),.2) 75%)">
+        const head = `<div class="dp-head" style="background:linear-gradient(100deg, ${this.soft(t, 0.34)}, rgba(255,250,235,.2) 75%)">
           ${this.seal(t, 'big')}<div class="dp-title"><b>${esc(t.name)}</b><div class="tags">${tags.join('')}</div></div>
           ${t.alive && t.capital >= 0 ? `<button class="btn sm" data-act="dfocus" data-id="${id}" title="Başkentini haritada göster">◎ Harita</button>` : ''}</div>`;
         let body;
